@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Send a GWAY-001 system notification using USB-gated SMTP credentials."""
+
+from __future__ import annotations
+
+import argparse
+from email.message import EmailMessage
+from pathlib import Path
+import shlex
+import smtplib
+import ssl
+import subprocess
+import sys
+
+
+RUNTIME_ENV = Path("/dev/shm/gway-admin-email.env")
+SYNC_HELPER = Path("/home/arthe/.local/bin/gway-admin-email-sync")
+
+
+class NotifyError(RuntimeError):
+    """Raised when a notification cannot be prepared or sent."""
+
+
+def load_runtime_env() -> dict[str, str]:
+    if SYNC_HELPER.exists():
+        subprocess.run(
+            [str(SYNC_HELPER), "--service-prestart", "--quiet"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    if not RUNTIME_ENV.exists():
+        raise NotifyError(f"missing runtime email env: {RUNTIME_ENV}")
+
+    values: dict[str, str] = {}
+    for raw in RUNTIME_ENV.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        parts = shlex.split(value)
+        values[key] = parts[0] if parts else ""
+    return values
+
+
+def require(values: dict[str, str], key: str) -> str:
+    value = values.get(key, "").strip()
+    if not value:
+        raise NotifyError(f"missing required email setting: {key}")
+    return value
+
+
+def choose_recipient(values: dict[str, str], channel: str) -> str:
+    if channel == "alt":
+        recipient = values.get("GWAY_ALT_NOTIFICATION_EMAIL", "").strip()
+        if not recipient:
+            raise NotifyError("ALT notification requested but GWAY_ALT_NOTIFICATION_EMAIL is blank")
+        return recipient
+    return (
+        values.get("GWAY_SYSTEM_NOTIFICATION_EMAIL", "").strip()
+        or values.get("DEFAULT_ADMIN_EMAIL", "").strip()
+    )
+
+
+def send_message(values: dict[str, str], *, channel: str, subject: str, body: str) -> str:
+    recipient = choose_recipient(values, channel)
+    if not recipient:
+        raise NotifyError("no system notification recipient configured")
+
+    message = EmailMessage()
+    message["From"] = require(values, "DEFAULT_FROM_EMAIL")
+    message["To"] = recipient
+    message["Subject"] = subject
+    message["X-GWAY-Notification-Channel"] = channel
+    message.set_content(body)
+
+    host = require(values, "EMAIL_HOST")
+    port = int(require(values, "EMAIL_PORT"))
+    username = require(values, "EMAIL_HOST_USER")
+    password = require(values, "EMAIL_HOST_PASSWORD")
+    use_ssl = values.get("EMAIL_USE_SSL", "").lower() == "true"
+    use_tls = values.get("EMAIL_USE_TLS", "").lower() == "true"
+
+    if use_ssl:
+        server = smtplib.SMTP_SSL(host, port, timeout=30, context=ssl.create_default_context())
+    else:
+        server = smtplib.SMTP(host, port, timeout=30)
+        if use_tls:
+            server.starttls(context=ssl.create_default_context())
+    try:
+        server.login(username, password)
+        server.send_message(message)
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            pass
+    return recipient
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--channel", choices=["primary", "alt"], default="primary")
+    parser.add_argument("--subject", required=True)
+    parser.add_argument("--body-file", type=Path)
+    parser.add_argument("--body")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+
+    if args.body_file:
+        body = args.body_file.read_text(encoding="utf-8")
+    elif args.body is not None:
+        body = args.body
+    else:
+        body = sys.stdin.read()
+
+    try:
+        values = load_runtime_env()
+        recipient = choose_recipient(values, args.channel)
+        if args.dry_run:
+            print(f"dry_run=yes channel={args.channel} recipient={recipient} subject={args.subject}")
+            print(body)
+            return 0
+        recipient = send_message(values, channel=args.channel, subject=args.subject, body=body)
+    except Exception as exc:
+        print(f"gway-system-notify: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"sent channel={args.channel} recipient={recipient} subject={args.subject}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

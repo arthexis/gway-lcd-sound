@@ -25,3 +25,7 @@ def test_templates_are_not_filled_with_local_bastion_identifiers():
 
     assert "<BASTION_ID_SERIAL_SHORT>" in template
     assert "<BASTION_ID_FS_UUID>" in template
+
+
+def test_documented_notification_helper_is_present():
+    assert (ROOT / "scripts/gway/gway-system-notify").exists()
