@@ -1,0 +1,37 @@
+.TH LCD-SYSTEM-INFO-PUBLISHER 1 "2026-08-11" "GWAY local tools" "User Commands"
+.SH NAME
+lcd-system-info-publisher \- publish host status frames for the local LCD
+.SH SYNOPSIS
+.B lcd-system-info-publisher
+.RI [ options ]
+.SH DESCRIPTION
+.B lcd-system-info-publisher
+writes a compact script-channel rotation for
+.BR lcd-lockfile-runner (1)
+under
+.IR /home/arthe/.local/state/lcd-lockfiles .
+.PP
+The current rotation omits routine summary, normal power, healthy services,
+quiet logs, and TODO/work screens. Abnormal power, service, or log frames still
+appear when there is something to inspect.
+.SH OPTIONS
+.TP
+.B --lock-dir DIR
+Write lockfiles under
+.IR DIR .
+.TP
+.B --dry-run
+Print generated frames without writing lockfiles.
+.SH FILES
+.TP
+.I /home/arthe/.local/state/lcd-lockfiles/lcd-rotation.script
+Generated script-channel frames.
+.TP
+.I /home/arthe/.local/state/lcd-lockfiles/lcd-channels.lck
+Active channel order. This publisher writes only
+.BR script .
+.TP
+.I /home/arthe/.local/state/lcd-lockfiles/lcd-system-info.json
+JSON copy of the generated frames.
+.SH SEE ALSO
+.BR lcd-lockfile-runner (1)

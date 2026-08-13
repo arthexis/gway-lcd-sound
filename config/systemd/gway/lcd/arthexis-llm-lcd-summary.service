@@ -1,0 +1,16 @@
+[Unit]
+Description=Refresh Arthexis LLM LCD summary
+After=arthexis.service lcd-arthexis.service
+Wants=arthexis.service lcd-arthexis.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/arthe/arthexis
+Environment=DJANGO_SETTINGS_MODULE=config.settings
+Environment=PYTHONPATH=/home/arthe/arthexis
+EnvironmentFile=-/home/arthe/arthexis/redis.env
+EnvironmentFile=-/home/arthe/arthexis/debug.env
+ExecStart=/usr/bin/python3 /home/arthe/gway-lcd-sound/scripts/gway/arthexis_dense_lcd_summary.py
+User=arthe
+StandardOutput=journal
+StandardError=journal

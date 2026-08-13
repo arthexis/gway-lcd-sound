@@ -1,0 +1,17 @@
+[Unit]
+Description=GWAY eth0 attached-node LCD monitor
+After=NetworkManager.service lcd-arthexis.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=arthe
+Group=arthe
+WorkingDirectory=/home/arthe/arthexis
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/arthe/.local/bin/gway-eth0-node-lcd-monitor --interval 15
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

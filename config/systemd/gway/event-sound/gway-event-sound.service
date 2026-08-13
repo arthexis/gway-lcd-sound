@@ -1,0 +1,18 @@
+[Unit]
+Description=GWAY event sound monitor
+After=network-online.target bastion-ssh-agent.service arthexis-usb-inventory.service
+Wants=bastion-ssh-agent.service arthexis-usb-inventory.service
+
+[Service]
+Type=simple
+User=arthe
+Group=arthe
+Environment=PYTHONUNBUFFERED=1
+Environment=GWAY_EVENT_SOUND_VOLUME=0.21
+ExecStart=/home/arthe/.local/bin/gway-event-sound-monitor
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -u
+
+event="${1:-unknown}"
+sound="${2:-ok}"
+state_dir="${CODEX_SOUND_HOOK_STATE_DIR:-/home/arthe/.local/state/codex-sound-hooks}"
+silent_file="$state_dir/silent"
+log_file="$state_dir/events.log"
+lock_file="$state_dir/play.lock"
+volume="${CODEX_SOUND_HOOK_VOLUME:-0.21}"
+play_timeout="${CODEX_SOUND_HOOK_TIMEOUT:-12}"
+lock_wait="${CODEX_SOUND_HOOK_LOCK_WAIT:-5}"
+
+mkdir -p "$state_dir" 2>/dev/null || true
+
+case "${CODEX_SOUND_HOOKS_DISABLED:-${CODEX_SOUND_HOOK_DISABLED:-0}}" in
+  1|true|TRUE|yes|YES|on|ON)
+    printf '%s event=%s sound=%s skipped=env-disabled\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$event" "$sound" >>"$log_file" 2>/dev/null || true
+    exit 0
+    ;;
+esac
+
+if [[ -e "$silent_file" ]]; then
+  printf '%s event=%s sound=%s skipped=silent\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$event" "$sound" >>"$log_file" 2>/dev/null || true
+  exit 0
+fi
+
+printf '%s event=%s sound=%s volume=%s start\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$event" "$sound" "$volume" >>"$log_file" 2>/dev/null || true
+
+exec 9>"$lock_file" 2>/dev/null || true
+if command -v flock >/dev/null 2>&1; then
+  if ! flock -w "$lock_wait" 9; then
+    printf '%s event=%s sound=%s skipped=playback-busy\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$event" "$sound" >>"$log_file" 2>/dev/null || true
+    exit 0
+  fi
+fi
+
+sound_bin="${CODEX_SOUND_HOOK_SOUND_BIN:-/usr/local/bin/sound}"
+
+if [[ -x "$sound_bin" ]]; then
+  if timeout "$play_timeout" "$sound_bin" "$sound" --volume "$volume" >>"$log_file" 2>&1; then
+    printf '%s event=%s sound=%s playback=ok timeout=%s\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$event" "$sound" "$play_timeout" >>"$log_file" 2>/dev/null || true
+  else
+    rc=$?
+    printf '%s event=%s sound=%s playback=failed rc=%s timeout=%s\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$event" "$sound" "$rc" "$play_timeout" >>"$log_file" 2>/dev/null || true
+  fi
+fi
+
+printf '%s event=%s sound=%s done\n' "$(date --iso-8601=seconds 2>/dev/null || date)" "$event" "$sound" >>"$log_file" 2>/dev/null || true
+exit 0

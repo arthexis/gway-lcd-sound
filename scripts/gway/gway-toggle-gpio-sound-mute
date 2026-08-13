@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mute_file="${NODE_SOUND_GPIO_MUTE_FILE:-${GWAY_SOUND_GPIO_MUTE_FILE:-$runtime_dir/gway-sound/gpio-muted}}"
+state_dir="/home/arthe/.local/state/gway-sound-mute"
+log_file="$state_dir/events.ndjson"
+lcd_dir="/home/arthe/.local/state/lcd-lockfiles"
+lcd_event_id=11
+card_id="${RFID_MODE_CARD_ID:-${RFID_CARD_ID:-}}"
+
+timestamp() {
+  date --iso-8601=seconds 2>/dev/null || date
+}
+
+json_string() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+signal_lcd() {
+  local pid
+  if [[ -r "$lcd_dir/lcd.pid" ]]; then
+    pid="$(tr -dc '0-9' <"$lcd_dir/lcd.pid" 2>/dev/null || true)"
+    if [[ -n "$pid" && "$pid" != "0" && "$pid" != "1" ]]; then
+      kill -USR1 "$pid" 2>/dev/null || true
+    fi
+  fi
+}
+
+lcd_event() {
+  local line1="$1"
+  local line2="$2"
+  local expires
+  expires="$(python3 -c 'from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) + timedelta(seconds=20)).isoformat())')"
+  mkdir -p "$lcd_dir" 2>/dev/null || true
+  {
+    printf '%s\n' "${line1:0:16}"
+    printf '%s\n' "${line2:0:16}"
+    printf '%s\n' "$expires"
+  } >"$lcd_dir/lcd-event-$lcd_event_id.lck" 2>/dev/null || true
+  signal_lcd
+}
+
+quiet_gpio_pin() {
+  if command -v pinctrl >/dev/null 2>&1; then
+    pinctrl set "${NODE_SOUND_GPIO_PIN:-${GWAY_SOUND_GPIO_PIN:-18}}" ip pd >/dev/null 2>&1 || true
+  fi
+}
+
+mkdir -p "$(dirname "$mute_file")" "$state_dir"
+chmod 700 "$(dirname "$mute_file")" "$state_dir" 2>/dev/null || true
+
+if [[ -e "$mute_file" ]]; then
+  rm -f "$mute_file"
+  state="unmuted"
+  lcd_event "GPIO SOUND" "UNMUTED"
+else
+  {
+    printf 'muted_at=%s\n' "$(timestamp)"
+    printf 'card_id=%s\n' "$card_id"
+    printf 'pid=%s\n' "$$"
+  } >"$mute_file"
+  chmod 600 "$mute_file" 2>/dev/null || true
+  quiet_gpio_pin
+  state="muted"
+  lcd_event "GPIO SOUND" "MUTED"
+fi
+
+printf '{"timestamp":"%s","event":"toggle_gpio_sound_mute","state":"%s","mute_file":"%s","card_id":"%s"}\n' \
+  "$(json_string "$(timestamp)")" \
+  "$(json_string "$state")" \
+  "$(json_string "$mute_file")" \
+  "$(json_string "$card_id")" >>"$log_file"
+
+printf '%s\n' "$state"

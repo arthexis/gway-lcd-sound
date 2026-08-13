@@ -1,0 +1,7 @@
+[Unit]
+Description=Publish standalone LCD system information frames
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/arthe/.local/bin/lcd-system-info-publisher

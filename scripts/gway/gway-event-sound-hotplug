@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+event="${1:-unknown}"
+
+case "$event" in
+  bastion-add)
+    exec /home/arthe/.local/bin/codex-sound-hook bastion-insert notice
+    ;;
+  bastion-remove)
+    exec /home/arthe/.local/bin/codex-sound-hook bastion-remove warning
+    ;;
+  wifi-add)
+    exec /home/arthe/.local/bin/codex-sound-hook wifi-connect ok
+    ;;
+  wifi-remove)
+    exec /home/arthe/.local/bin/codex-sound-hook wifi-disconnect warning
+    ;;
+  *)
+    exec /home/arthe/.local/bin/codex-sound-hook hotplug attention
+    ;;
+esac

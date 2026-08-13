@@ -1,0 +1,15 @@
+[Unit]
+Description=Compatibility wrapper for standalone lockfile LCD service
+After=arthexis.service
+Wants=arthexis.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=arthe
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/systemctl --user start lcd-lockfile.service
+ExecStop=/usr/bin/systemctl --user stop lcd-lockfile.service
+
+[Install]
+WantedBy=multi-user.target

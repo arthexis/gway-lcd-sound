@@ -1,0 +1,45 @@
+.TH LCD-LOCKFILE-RUNNER 1 "2026-08-11" "GWAY local tools" "User Commands"
+.SH NAME
+lcd-lockfile-runner \- cycle local LCD frames from lockfiles
+.SH SYNOPSIS
+.B lcd-lockfile-runner
+.RI [ options ]
+.SH DESCRIPTION
+.B lcd-lockfile-runner
+drives the local 16x2 LCD from lockfiles in the configured LCD lock
+directories. It supports normal channels, generated script frames, and
+temporary event frames.
+.PP
+Routine "do nothing" payloads are filtered before rotation. This includes
+routine/no-action generated summaries, quiet log summaries, normal power,
+healthy service, and TODO/work script frames.
+.SH OPTIONS
+.TP
+.B --lock-dir DIR
+Read LCD lockfiles from
+.IR DIR .
+May be repeated.
+.TP
+.B --rotation-seconds SECONDS
+Seconds to hold a normal frame.
+.TP
+.B --event-seconds SECONDS
+Seconds to hold an event frame.
+.TP
+.B --once
+Render one frame and exit.
+.TP
+.B --dry-run
+Print the selected frame instead of writing hardware or fallback state.
+.SH FILES
+.TP
+.I /home/arthe/.local/state/lcd-lockfile-runner/lcd-screen.txt
+Latest rendered frame.
+.TP
+.I /home/arthe/.local/state/lcd-lockfile-runner/lcd-history.ndjson
+Rendered frame history.
+.TP
+.I /home/arthe/.local/state/lcd-lockfile-runner/lcd-lockfile-runner.log
+Runner log.
+.SH SEE ALSO
+.BR lcd-system-info-publisher (1)

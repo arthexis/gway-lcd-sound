@@ -1,0 +1,122 @@
+.TH LCD-COMMANDS 1 "2026-07-16" "gway-001" "User Commands"
+.SH NAME
+lcd-commands \- local LCD lockfile display tools
+.SH SYNOPSIS
+.B lcd-lockfile-runner
+.RI [ options ]
+.br
+.B lcd-system-info-publisher
+.RI [ options ]
+.br
+.B gway-eth0-node-lcd-monitor
+.RI [ options ]
+.SH DESCRIPTION
+The local LCD stack is independent of the Arthexis Python runtime. Producers
+write small lockfiles, and
+.B lcd-lockfile-runner
+rotates those lockfiles onto the attached 16x2 LCD.
+.PP
+.B lcd-system-info-publisher
+generates the normal ten-screen system-information rotation.
+.PP
+.B gway-eth0-node-lcd-monitor
+can publish information about a node attached on eth0.
+.SH LOCKFILES
+The runner reads lockfiles from
+.IR /home/arthe/.local/state/lcd-lockfiles
+and, for compatibility, the legacy Arthexis lock directory when configured.
+.PP
+Important files include:
+.TP
+.I lcd-channels.lck
+Channel order, such as
+.BR "script summary" .
+.TP
+.I lcd-rotation.script
+Scripted rotation frames used by the system-info publisher.
+.TP
+.I lcd-event-*.lck
+High-priority event messages that temporarily preempt normal rotation.
+.SH LCD-LOCKFILE-RUNNER OPTIONS
+.TP
+.BI --lock-dir " DIR"
+Add a lock directory. May be repeated.
+.TP
+.BI --rotation-seconds " SECONDS"
+Normal frame duration. The local default is 10 seconds.
+.TP
+.BI --event-seconds " SECONDS"
+Event frame duration.
+.TP
+.BI --poll-seconds " SECONDS"
+Refresh and scroll interval.
+.TP
+.B --no-hardware
+Write fallback state/history only.
+.TP
+.B --stop-embedded
+Stop old embedded Arthexis LCD runner processes owned by this user.
+.TP
+.B --once
+Render one selected frame and exit.
+.TP
+.B --dry-run
+Print the selected frame instead of writing the LCD.
+.SH SYSTEM-INFO PUBLISHER OPTIONS
+.TP
+.BI --lock-dir " DIR"
+Output directory for generated LCD lockfiles.
+.TP
+.B --dry-run
+Print the ten generated frames without writing lockfiles.
+.SH EXAMPLES
+Show the generated ten-screen rotation:
+.PP
+.nf
+/home/arthe/.local/bin/lcd-system-info-publisher --dry-run
+.fi
+.PP
+Publish system-info frames immediately:
+.PP
+.nf
+/home/arthe/.local/bin/lcd-system-info-publisher
+.fi
+.PP
+Render one LCD frame without hardware writes:
+.PP
+.nf
+/home/arthe/.local/bin/lcd-lockfile-runner --once --dry-run --no-hardware
+.fi
+.PP
+Check the active LCD services:
+.PP
+.nf
+systemctl --user status lcd-lockfile.service --no-pager
+systemctl --user status lcd-system-info-publisher.timer --no-pager
+.fi
+.PP
+Inspect the fallback current-screen file:
+.PP
+.nf
+cat /home/arthe/.local/state/lcd-lockfile-runner/lcd-screen.txt
+.fi
+.SH CURRENT ROTATION
+The current system-info rotation includes host, network, Wi-Fi, health, disk,
+power, services/process count, devices, logs, and work state. When the summary
+channel is active, the runner alternates system-info frames with summary frames.
+.SH FILES
+.TP
+.I /home/arthe/.local/bin/lcd-lockfile-runner
+Standalone LCD runner.
+.TP
+.I /home/arthe/.local/bin/lcd-system-info-publisher
+System-info frame publisher.
+.TP
+.I /home/arthe/.local/state/lcd-lockfiles
+Local LCD lockfile directory.
+.TP
+.I /home/arthe/.local/state/lcd-lockfile-runner
+Runner state, history, and fallback display files.
+.SH SEE ALSO
+.BR systemctl (1),
+.BR sound-commands (1)

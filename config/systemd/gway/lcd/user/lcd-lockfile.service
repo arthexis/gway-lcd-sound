@@ -1,0 +1,14 @@
+[Unit]
+Description=Standalone lockfile-driven LCD service
+After=default.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+Environment=LCD_LOCK_DIRS=/home/arthe/.local/state/lcd-lockfiles:/home/arthe/arthexis/.locks
+ExecStart=/home/arthe/.local/bin/lcd-lockfile-runner --stop-embedded
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

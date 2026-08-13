@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh standalone LCD system information frames
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=true
+Unit=lcd-system-info-publisher.service
+
+[Install]
+WantedBy=timers.target
