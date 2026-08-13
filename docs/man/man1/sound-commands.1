@@ -1,0 +1,151 @@
+.TH SOUND-COMMANDS 1 "2026-07-16" "gway-001" "User Commands"
+.SH NAME
+sound-commands \- local GPIO sound and event notification tools
+.SH SYNOPSIS
+.B sound
+.RI [ sound |list|all|test]
+.RI [ options ]
+.br
+.B sound-mode
+.RI [ status |silent|on|toggle|test|log|hook-log]
+.br
+.B gway-event-sound-monitor
+.RI [ options ]
+.SH DESCRIPTION
+The local sound tools play short GPIO earcons and gate whether event sounds are
+audible.
+.PP
+.B sound
+or
+.B sound.sh
+plays one named pattern directly.
+.PP
+.B sound-mode
+toggles the shared sound-hook silent file and shows recent logs.
+.PP
+.B gway-event-sound-monitor
+watches local host events and maps them to existing sound names.
+.SH SOUND NAMES
+The local vocabulary is:
+.TP
+.B ok
+Single high chirp.
+.TP
+.B notice
+Two even mid chirps.
+.TP
+.B attention
+Rising low-high pair.
+.TP
+.B warning
+Falling high-low pair.
+.TP
+.B error
+Three low buzzes.
+.TP
+.B busy
+Four fast ticks.
+.TP
+.B critical
+Alternating alarm.
+.SH SOUND OPTIONS
+.TP
+.BI --pin " PIN"
+BCM GPIO pin. The local default is 18.
+.TP
+.BI --volume " VALUE"
+Volume from 0.0 to 1.0.
+.TP
+.BI --pause " SECONDS"
+Pause between sounds for all/test.
+.TP
+.B --dry-run
+Print patterns without playing.
+.SH SOUND-MODE COMMANDS
+.TP
+.B status
+Show whether event sounds are audible or silent.
+.TP
+.B silent
+Mute event sounds.
+.TP
+.B on
+Enable event sounds.
+.TP
+.B toggle
+Switch between silent and audible.
+.TP
+.BI test " SOUND"
+Enable sound and play one sound.
+.TP
+.BI log " N"
+Show recent event-sound monitor log lines.
+.TP
+.BI hook-log " N"
+Show recent sound-hook log lines.
+.SH EVENT MONITOR OPTIONS
+.TP
+.BI --poll-seconds " SECONDS"
+Polling interval.
+.TP
+.B --once
+Print one snapshot and exit.
+.TP
+.B --json
+Emit JSON with
+.BR --once .
+.TP
+.B --dry-run
+Log and print sound decisions without playback.
+.SH EXAMPLES
+List sound names:
+.PP
+.nf
+sound list
+.fi
+.PP
+Preview all sounds without playing:
+.PP
+.nf
+sound all --dry-run
+.fi
+.PP
+Play the attention sound quietly:
+.PP
+.nf
+sound attention --volume 0.20
+.fi
+.PP
+Mute event sounds:
+.PP
+.nf
+/home/arthe/.local/bin/sound-mode silent
+.fi
+.PP
+Re-enable and test:
+.PP
+.nf
+/home/arthe/.local/bin/sound-mode test ok
+.fi
+.PP
+Run the event monitor once without playback:
+.PP
+.nf
+/home/arthe/.local/bin/gway-event-sound-monitor --once --json --dry-run
+.fi
+.SH FILES
+.TP
+.I /usr/local/bin/sound
+GPIO earcon player.
+.TP
+.I /home/arthe/.local/bin/codex-sound-hook
+Shared playback hook used by local agents and services.
+.TP
+.I /home/arthe/.local/state/codex-sound-hooks/silent
+Presence of this file mutes hook playback.
+.TP
+.I /home/arthe/.local/state/codex-sound-hooks/events.log
+Sound-hook event log.
+.SH SEE ALSO
+.BR lcd-commands (1),
+.BR rfid-commands (1)
