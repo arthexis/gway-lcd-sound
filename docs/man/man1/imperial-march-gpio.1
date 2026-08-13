@@ -1,0 +1,69 @@
+.TH IMPERIAL-MARCH-GPIO 1 "2026-08-10" "GWAY local tools" "User Commands"
+.SH NAME
+imperial-march-gpio \- play an Imperial March motif on the local GPIO buzzer
+.SH SYNOPSIS
+.B imperial-march-gpio
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B imperial-march-gpio
+plays a short one-shot Imperial March motif on the configured local GPIO sound
+pin. It is intended for later RFID card binding and respects the shared GPIO
+sound mute file used by the local event-sound helpers.
+.PP
+The command uses RPi.GPIO, serializes playback through the shared sound-hook
+lock file, and cleans the GPIO pin before exiting. By default it uses BCM GPIO
+18, a conservative buzzer volume, and a one-octave transpose so the piezo can
+reproduce the motif clearly.
+.SH OPTIONS
+.TP
+.BI --pin " PIN"
+GPIO BCM pin to use. Defaults to the local sound pin environment or 18.
+.TP
+.BI --volume " N"
+Volume from 0.0 to 1.0. Defaults to
+.B IMPERIAL_MARCH_VOLUME
+or a conservative local sound-hook value.
+.TP
+.BI --tempo " BPM"
+Tempo in beats per minute. Values are clamped to 30 through 320.
+.TP
+.BI --transpose " SEMITONES"
+Transpose the motif by this many semitones. Defaults to 12.
+.TP
+.BI --repeat " N"
+Number of times to play the motif. Values are clamped to 1 through 8.
+.TP
+.BI --gap " SECONDS"
+Pause between repeats.
+.TP
+.B --dry-run
+Print the note plan and total duration without touching GPIO.
+.SH EXAMPLES
+.TP
+Play once using the local GPIO default:
+.EX
+imperial-march-gpio
+.EE
+.TP
+Preview without playing:
+.EX
+imperial-march-gpio --dry-run
+.EE
+.TP
+Later bind the next unmapped RFID card to the command:
+.EX
+rfid-arm-next-script --script /home/arthe/.local/bin/imperial-march-gpio --display-name "IMPERIAL" --label-line1 "IMPERIAL" --label-line2 "MARCH"
+.EE
+.SH ENVIRONMENT
+.TP
+.B NODE_SOUND_GPIO_PIN, GWAY_SOUND_GPIO_PIN
+Default BCM GPIO sound pin.
+.TP
+.B NODE_SOUND_GPIO_MUTE_FILE, GWAY_SOUND_GPIO_MUTE_FILE
+Runtime mute flag. If present, the command exits successfully without playback.
+.TP
+.B IMPERIAL_MARCH_VOLUME, IMPERIAL_MARCH_TEMPO, IMPERIAL_MARCH_TRANSPOSE
+Command-specific playback defaults.
+.SH SEE ALSO
+.BR rfid-arm-next-script (1),
+.BR gway-toggle-gpio-sound-mute (1)

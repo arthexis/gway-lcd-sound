@@ -11,7 +11,7 @@ surface belongs to GWAY.
 
 - `scripts/gway/`: standalone Python and Bash helpers for LCD rotation,
   LCD summaries, eth0 node display, event-sound polling, hotplug sounds,
-  sound playback, and GPIO mute control.
+  sound playback, GPIO mute control, and archived local media shortcuts.
 - `config/systemd/gway/`: system and user service units copied from the live
   GWAY layout.
 - `config/templates/`: non-secret environment templates.
@@ -24,7 +24,7 @@ surface belongs to GWAY.
 
 ```bash
 PYTHONPATH=. python3 -m pytest tests
-bash -n scripts/gway/codex-sound-hook scripts/gway/gway-event-sound-hotplug scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh
+bash -n scripts/gway/codex-sound-hook scripts/gway/gway-event-sound-hotplug scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh scripts/gway/radio-play
 python3 -m py_compile scripts/gway/*.py
 ```
 

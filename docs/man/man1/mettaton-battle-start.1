@@ -1,0 +1,26 @@
+.TH METTATON-BATTLE-START 1 "2026-08-02" "GWAY local tools" "User Commands"
+.SH NAME
+mettaton-battle-start \- play a short battle-theme motif on the local GPIO buzzer
+.SH SYNOPSIS
+.B mettaton-battle-start
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B mettaton-battle-start
+plays a short opening motif on the configured local GPIO sound pin. It is
+intended for RFID one-shot use and respects the shared GPIO sound mute file.
+.PP
+The command uses RPi.GPIO, a lock file to serialize sound-hook playback, and a
+short transposed motif so the buzzer can reproduce it clearly.
+.SH OPTIONS
+.TP
+.B --pin PIN
+GPIO BCM pin to use.
+.TP
+.B --volume N
+Volume from 0.0 to 1.0.
+.TP
+.B --dry-run
+Print the notes that would be played.
+.SH SEE ALSO
+.BR gway-toggle-gpio-sound-mute (1),
+.BR mettaton-metal-crusher-start (1)

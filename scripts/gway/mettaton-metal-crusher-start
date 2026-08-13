@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Play a short Metal Crusher opening motif on the local sound buzzer."""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import math
+import os
+from pathlib import Path
+import sys
+import time
+
+
+DEFAULT_PIN = int(os.environ.get("NODE_SOUND_GPIO_PIN") or os.environ.get("GWAY_SOUND_GPIO_PIN", "18"))
+DEFAULT_VOLUME = float(os.environ.get("METAL_CRUSHER_VOLUME") or os.environ.get("CODEX_SOUND_HOOK_VOLUME", "0.20"))
+LOCK_FILE = Path(os.environ.get("CODEX_SOUND_HOOK_LOCK_FILE", "/home/arthe/.local/state/codex-sound-hooks/play.lock"))
+MUTE_FILE = Path(
+    os.environ.get("NODE_SOUND_GPIO_MUTE_FILE")
+    or os.environ.get("GWAY_SOUND_GPIO_MUTE_FILE")
+    or Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "gway-sound" / "gpio-muted"
+)
+MAX_DUTY_CYCLE = 28.0
+TEMPO_BPM = 116.0
+TICKS_PER_QUARTER = 96.0
+TRANSPOSE = 12
+
+# Opening lead phrase from the Metal Crusher MIDI, transposed up one octave so
+# the lowest notes stay audible on the local buzzer.
+MOTIF = [
+    (0, 72, 75),
+    (72, 24, 75),
+    (96, 24, 63),
+    (144, 24, 63),
+    (192, 48, 56),
+    (264, 24, 56),
+    (288, 96, 51),
+    (384, 72, 39),
+    (456, 24, 39),
+    (480, 24, 39),
+    (528, 24, 39),
+    (576, 96, 44),
+]
+
+
+def clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
+def note_frequency(midi_note: int) -> float:
+    return 440.0 * (2.0 ** ((midi_note - 69) / 12.0))
+
+
+def seconds_from_ticks(ticks: int) -> float:
+    return ticks * (60.0 / TEMPO_BPM) / TICKS_PER_QUARTER
+
+
+def load_gpio():
+    try:
+        import RPi.GPIO as GPIO  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"RPi.GPIO unavailable: {exc}") from exc
+    return GPIO
+
+
+def configure_gpio(GPIO, pin: int) -> None:
+    GPIO.setwarnings(False)
+    mode = GPIO.getmode()
+    if mode is None:
+        GPIO.setmode(GPIO.BCM)
+    elif mode != GPIO.BCM:
+        raise RuntimeError(f"different GPIO mode already active: {mode}")
+    GPIO.setup(pin, GPIO.OUT)
+
+
+def cleanup_gpio(GPIO, pin: int) -> None:
+    try:
+        GPIO.cleanup(pin)
+    except Exception:
+        pass
+
+
+def play_tone(GPIO, pin: int, frequency: float, duration: float, volume: float) -> None:
+    duty = clamp(volume, 0.0, 1.0) * MAX_DUTY_CYCLE
+    if duty <= 0 or frequency <= 0 or duration <= 0:
+        time.sleep(max(0.0, duration))
+        return
+
+    pwm = GPIO.PWM(pin, int(round(frequency)))
+    pwm.start(0)
+    try:
+        attack = min(0.010, duration / 4)
+        release = min(0.016, duration / 4)
+        sustain = max(0.0, duration - attack - release)
+        for step in range(1, 5):
+            pwm.ChangeDutyCycle(duty * step / 4)
+            time.sleep(attack / 4)
+        if sustain > 0:
+            time.sleep(sustain)
+        for step in range(3, -1, -1):
+            pwm.ChangeDutyCycle(duty * step / 4)
+            time.sleep(release / 4)
+    finally:
+        pwm.stop()
+
+
+def play_motif(pin: int, volume: float) -> None:
+    GPIO = load_gpio()
+    configure_gpio(GPIO, pin)
+    try:
+        cursor = 0
+        for start, duration_ticks, midi_note in MOTIF:
+            if start > cursor:
+                time.sleep(seconds_from_ticks(start - cursor))
+            play_tone(GPIO, pin, note_frequency(midi_note + TRANSPOSE), seconds_from_ticks(duration_ticks), volume)
+            cursor = start + duration_ticks
+    finally:
+        cleanup_gpio(GPIO, pin)
+
+
+def dry_run() -> None:
+    for start, duration_ticks, midi_note in MOTIF:
+        note = midi_note + TRANSPOSE
+        print(
+            f"tick={start:4d} duration={duration_ticks:3d} "
+            f"midi={note:2d} frequency={note_frequency(note):.1f}Hz"
+        )
+
+
+def gpio_muted() -> bool:
+    return MUTE_FILE.exists()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pin", type=int, default=DEFAULT_PIN)
+    parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    volume = clamp(args.volume, 0.0, 1.0)
+
+    if args.dry_run:
+        dry_run()
+        return 0
+
+    if gpio_muted():
+        return 0
+
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK_FILE.open("w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        play_motif(args.pin, volume)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

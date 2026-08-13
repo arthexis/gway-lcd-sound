@@ -1,0 +1,941 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="radio-play"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/radio-play"
+STATIONS_FILE="$CONFIG_DIR/stations.tsv"
+LAST_STATION_FILE="$CONFIG_DIR/last-station"
+LAST_DEVICE_FILE="$CONFIG_DIR/last-device"
+LOG_DIR="$CONFIG_DIR/logs"
+EVENT_LOG="$LOG_DIR/events.tsv"
+SCAN_SECONDS="${RADIO_PLAY_SCAN_SECONDS:-12}"
+SINK_WAIT_SECONDS="${RADIO_PLAY_SINK_WAIT_SECONDS:-30}"
+RADIO_BROWSER_API="${RADIO_PLAY_BROWSER_API:-https://de1.api.radio-browser.info}"
+ICECAST_DIRECTORY_URL="${RADIO_PLAY_ICECAST_URL:-https://dir.xiph.org/yp.xml}"
+PAIRING_ALLOWED=0
+
+die() {
+  printf '%s: %s\n' "$APP_NAME" "$*" >&2
+  exit 1
+}
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  radio-play [--pairing]                     guided connect + station picker
+  radio-play play [NAME]                      play a remembered station, or last station
+  radio-play add NAME URL                     add or update a station
+  radio-play remove NAME                      remove a station
+  radio-play list                             list remembered stations
+  radio-play device [MAC]                     show or set remembered Bluetooth device
+  radio-play scan                             scan and connect to Bluetooth headphones
+  radio-play logs [N]                         show recent browse/playback logs
+  radio-play config                           show local config paths
+
+Browse and rotate:
+  radio-play [--pairing] --browser [QUERY] [OPTIONS]
+                                              browse Radio Browser stations
+  radio-play [--pairing] --icecast [QUERY] [OPTIONS]
+                                              browse the Icecast/Xiph directory
+
+Global options:
+  --pairing                                   allow scan/pairing when no paired headphones connect
+
+Browse options:
+  --query TEXT                                search text, equivalent to positional QUERY
+  --limit N                                   result count, default 20
+  --duration 30s|10m|1h                       rotate after this duration per station
+  --list-only                                 list/log results without connecting or playing
+  --save                                      save played browsed stations locally
+  --country US|MX                             Radio Browser country code filter
+  --tag jazz                                  Radio Browser tag filter
+  --language english                          Radio Browser language filter
+  --codec MP3|AAC                             Radio Browser codec filter
+
+Examples:
+  radio-play --browser jazz --country US --limit 10
+  radio-play --pairing --browser jazz --country US --limit 10
+  radio-play --browser --tag ambient --duration 15m --save
+  radio-play --icecast metal --duration 5m
+
+Station names are stored locally in ~/.config/radio-play/stations.tsv.
+Browse/playback logs are stored locally in ~/.config/radio-play/logs/events.tsv.
+Press Ctrl+C to stop playback.
+EOF
+}
+
+ensure_config() {
+  mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+  if [[ ! -f "$STATIONS_FILE" ]]; then
+    {
+      printf '# name\tstream_url\n'
+      printf '# Add stations with: radio-play add "Station name" "https://stream.example/radio"\n'
+    } > "$STATIONS_FILE"
+  fi
+  if [[ ! -f "$EVENT_LOG" ]]; then
+    printf 'timestamp\tevent\tsource\tstation\turl\tdetail\n' > "$EVENT_LOG"
+  fi
+}
+
+log_field() {
+  printf '%s' "${1:-}" | tr '\t\r\n' '   '
+}
+
+log_event() {
+  ensure_config
+  local event="$1"
+  local source="${2:-}"
+  local station="${3:-}"
+  local url="${4:-}"
+  local detail="${5:-}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date -Is)" \
+    "$(log_field "$event")" \
+    "$(log_field "$source")" \
+    "$(log_field "$station")" \
+    "$(log_field "$url")" \
+    "$(log_field "$detail")" >> "$EVENT_LOG"
+}
+
+normalise_mac() {
+  local mac="${1^^}"
+  mac="${mac//-/:}"
+  [[ "$mac" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]] || return 1
+  printf '%s\n' "$mac"
+}
+
+mac_token() {
+  local mac="$1"
+  printf '%s\n' "${mac//:/_}"
+}
+
+parse_duration() {
+  local raw="${1:-}"
+  if [[ -z "$raw" || "$raw" == "0" ]]; then
+    printf '0\n'
+    return
+  fi
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$raw"
+    return
+  fi
+  if [[ "$raw" =~ ^([0-9]+)([sSmMhH])$ ]]; then
+    local value="${BASH_REMATCH[1]}"
+    local unit="${BASH_REMATCH[2],,}"
+    case "$unit" in
+      s) printf '%s\n' "$value" ;;
+      m) printf '%s\n' "$((value * 60))" ;;
+      h) printf '%s\n' "$((value * 3600))" ;;
+    esac
+    return
+  fi
+  die "invalid duration: $raw"
+}
+
+station_rows() {
+  ensure_config
+  awk -F '\t' 'NF >= 2 && $1 !~ /^#/ && $1 != "" && $2 != "" {print $1 "\t" $2}' "$STATIONS_FILE"
+}
+
+station_url() {
+  local name="$1"
+  station_rows | awk -F '\t' -v name="$name" '$1 == name {print $2; found=1; exit} END {exit found ? 0 : 1}'
+}
+
+list_stations() {
+  local rows
+  rows="$(station_rows)"
+  if [[ -z "$rows" ]]; then
+    printf 'No stations saved yet.\n'
+    printf 'Add one with: radio-play add "Station name" "https://stream-url"\n'
+    return 0
+  fi
+  printf '%s\n' "$rows" | awk -F '\t' '{printf "%2d. %s\n    %s\n", NR, $1, $2}'
+}
+
+add_station() {
+  local name="$1"
+  local url="$2"
+  [[ -n "$name" ]] || die "station name cannot be empty"
+  [[ -n "$url" ]] || die "station URL cannot be empty"
+  [[ "$name" != *$'\t'* ]] || die "station name cannot contain a tab"
+  [[ "$url" =~ ^https?:// ]] || die "station URL must start with http:// or https://"
+
+  ensure_config
+  local tmp
+  tmp="$(mktemp "$CONFIG_DIR/stations.XXXXXX")"
+  awk -F '\t' -v OFS='\t' -v name="$name" -v url="$url" '
+    $1 == name && $1 !~ /^#/ {print name, url; seen=1; next}
+    {print}
+    END {if (!seen) print name, url}
+  ' "$STATIONS_FILE" > "$tmp"
+  mv "$tmp" "$STATIONS_FILE"
+  printf '%s\n' "$name" > "$LAST_STATION_FILE"
+  log_event station_saved saved "$name" "$url" manual
+  printf 'Saved station: %s\n' "$name"
+}
+
+save_station_quiet() {
+  local name="$1"
+  local url="$2"
+  add_station "$name" "$url" >/dev/null
+}
+
+remove_station() {
+  local name="$1"
+  ensure_config
+  local tmp
+  tmp="$(mktemp "$CONFIG_DIR/stations.XXXXXX")"
+  awk -F '\t' -v name="$name" '$1 != name || $1 ~ /^#/' "$STATIONS_FILE" > "$tmp"
+  mv "$tmp" "$STATIONS_FILE"
+  if [[ -f "$LAST_STATION_FILE" ]] && [[ "$(cat "$LAST_STATION_FILE")" == "$name" ]]; then
+    rm -f "$LAST_STATION_FILE"
+  fi
+  log_event station_removed saved "$name" "" manual
+  printf 'Removed station if it existed: %s\n' "$name"
+}
+
+pick_station() {
+  ensure_config
+  local last=""
+  [[ -f "$LAST_STATION_FILE" ]] && last="$(cat "$LAST_STATION_FILE")"
+
+  local rows
+  rows="$(station_rows)"
+  if [[ -z "$rows" ]]; then
+    if ! stdin_interactive; then
+      die "no saved stations; run radio-play add or use --browser/--icecast first"
+    fi
+    printf 'No stations are saved yet.\n' >&2
+    prompt_add_station
+    return
+  fi
+
+  if ! stdin_interactive; then
+    if [[ -n "$last" ]] && station_url "$last" >/dev/null 2>&1; then
+      printf '%s\n' "$last"
+      return
+    fi
+    printf '%s\n' "$rows" | awk -F '\t' 'NR == 1 {print $1}'
+    return
+  fi
+
+  printf 'Saved stations:\n' >&2
+  list_stations >&2
+  if [[ -n "$last" ]] && station_url "$last" >/dev/null 2>&1; then
+    printf '\nPress Enter for last station [%s], pick a number, or type "add": ' "$last" >&2
+  else
+    printf '\nPick a number, or type "add": ' >&2
+  fi
+
+  local choice
+  read -r choice
+  if [[ -z "$choice" && -n "$last" ]] && station_url "$last" >/dev/null 2>&1; then
+    printf '%s\n' "$last"
+    return
+  fi
+  if [[ "$choice" == "add" || "$choice" == "a" ]]; then
+    prompt_add_station
+    return
+  fi
+  [[ "$choice" =~ ^[0-9]+$ ]] || die "invalid station choice"
+
+  local name
+  name="$(printf '%s\n' "$rows" | awk -F '\t' -v n="$choice" 'NR == n {print $1}')"
+  [[ -n "$name" ]] || die "station number not found"
+  printf '%s\n' "$name"
+}
+
+prompt_add_station() {
+  stdin_interactive || die "adding a station requires an interactive shell"
+  local name url
+  printf 'Station name: ' >&2
+  read -r name
+  printf 'Stream URL: ' >&2
+  read -r url
+  add_station "$name" "$url" >&2
+  printf '%s\n' "$name"
+}
+
+connected_devices() {
+  bluetoothctl devices 2>/dev/null | while read -r word mac alias; do
+    [[ "$word" == "Device" ]] || continue
+    if bluetoothctl info "$mac" 2>/dev/null | grep -q '^	Connected: yes'; then
+      printf '%s\t%s\n' "$mac" "${alias:-unknown}"
+    fi
+  done
+}
+
+paired_devices() {
+  bluetoothctl devices 2>/dev/null | while read -r word mac alias; do
+    [[ "$word" == "Device" ]] || continue
+    local info
+    info="$(bluetoothctl info "$mac" 2>/dev/null)" || continue
+    if grep -Eq '^	(Paired|Trusted): yes' <<< "$info"; then
+      printf '%s\t%s\n' "$mac" "${alias:-unknown}"
+    fi
+  done
+}
+
+device_connected() {
+  local mac="$1"
+  bluetoothctl info "$mac" 2>/dev/null | grep -q '^	Connected: yes'
+}
+
+bluetooth_ready() {
+  bluetoothctl show >/dev/null 2>&1
+}
+
+stdin_interactive() {
+  [[ -t 0 ]]
+}
+
+set_bluetooth_power() {
+  bluetoothctl power on >/dev/null 2>&1 || true
+  bluetoothctl agent on >/dev/null 2>&1 || true
+  bluetoothctl default-agent >/dev/null 2>&1 || true
+}
+
+connect_device() {
+  local mac="$1"
+  set_bluetooth_power
+  bluetoothctl trust "$mac" >/dev/null 2>&1 || true
+  if ! device_connected "$mac"; then
+    bluetoothctl connect "$mac" >/dev/null 2>&1 || true
+  fi
+  device_connected "$mac"
+}
+
+scan_for_device() {
+  stdin_interactive || die "Bluetooth pairing requires an interactive shell; run radio-play scan manually first"
+  printf 'Put the Bluetooth headphones into pairing mode, then press Enter to scan. ' >&2
+  read -r _
+  set_bluetooth_power
+  bluetoothctl scan on >/dev/null 2>&1 || true
+  printf 'Scanning for %s seconds...\n' "$SCAN_SECONDS" >&2
+  sleep "$SCAN_SECONDS"
+  bluetoothctl scan off >/dev/null 2>&1 || true
+
+  mapfile -t devices < <(bluetoothctl devices | awk '/^Device / {$1=""; sub(/^ /,""); print}')
+  if [[ "${#devices[@]}" -eq 0 ]]; then
+    printf 'No Bluetooth devices were found. You can type a MAC manually.\n' >&2
+  else
+    printf 'Known/discovered Bluetooth devices:\n' >&2
+    local i=1
+    local line
+    for line in "${devices[@]}"; do
+      printf '%2d. %s\n' "$i" "$line" >&2
+      i=$((i + 1))
+    done
+  fi
+
+  printf 'Pick a number, type a MAC, or press Enter to rescan: ' >&2
+  local choice
+  read -r choice
+  if [[ -z "$choice" ]]; then
+    scan_for_device
+    return
+  fi
+  if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#devices[@]} )); then
+    printf '%s\n' "${devices[$((choice - 1))]}" | awk '{print $1}'
+    return
+  fi
+  local mac
+  mac="$(normalise_mac "$choice")" || die "invalid Bluetooth MAC: $choice"
+  printf '%s\n' "$mac"
+}
+
+choose_connected_device() {
+  local rows
+  rows="$(connected_devices)"
+  [[ -n "$rows" ]] || return 1
+
+  local count
+  count="$(printf '%s\n' "$rows" | wc -l)"
+  if [[ "$count" -eq 1 ]]; then
+    printf '%s\n' "$rows" | awk -F '\t' '{print $1}'
+    return
+  fi
+  if ! stdin_interactive; then
+    printf '%s\n' "$rows" | awk -F '\t' 'NR == 1 {print $1}'
+    return
+  fi
+
+  printf 'Connected Bluetooth devices:\n' >&2
+  printf '%s\n' "$rows" | awk -F '\t' '{printf "%2d. %s  %s\n", NR, $1, $2}' >&2
+  printf 'Pick the headphone device number: ' >&2
+  local choice
+  read -r choice
+  [[ "$choice" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$rows" | awk -F '\t' -v n="$choice" 'NR == n {print $1}'
+}
+
+choose_paired_device() {
+  local rows
+  rows="$(paired_devices)"
+  [[ -n "$rows" ]] || return 1
+
+  local count
+  count="$(printf '%s\n' "$rows" | wc -l)"
+  if [[ "$count" -eq 1 ]]; then
+    printf '%s\n' "$rows" | awk -F '\t' '{print $1}'
+    return
+  fi
+  if ! stdin_interactive; then
+    printf '%s\n' "$rows" | awk -F '\t' 'NR == 1 {print $1}'
+    return
+  fi
+
+  printf 'Paired Bluetooth devices:\n' >&2
+  printf '%s\n' "$rows" | awk -F '\t' '{printf "%2d. %s  %s\n", NR, $1, $2}' >&2
+  printf 'Pick the headphone device number: ' >&2
+  local choice
+  read -r choice
+  [[ "$choice" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$rows" | awk -F '\t' -v n="$choice" 'NR == n {print $1}'
+}
+
+ensure_headphones() {
+  need_cmd bluetoothctl
+  bluetooth_ready || die "Bluetooth is not reachable. Start/enable bluetooth.service first."
+
+  local mac=""
+  if [[ -f "$LAST_DEVICE_FILE" ]]; then
+    mac="$(cat "$LAST_DEVICE_FILE")"
+    if normalise_mac "$mac" >/dev/null 2>&1; then
+      printf 'Trying remembered headphones %s...\n' "$mac" >&2
+      if connect_device "$mac"; then
+        printf '%s\n' "$mac"
+        return
+      fi
+      printf 'Remembered headphones did not connect.\n' >&2
+    fi
+  fi
+
+  if mac="$(choose_connected_device)"; then
+    printf '%s\n' "$mac" > "$LAST_DEVICE_FILE"
+    printf '%s\n' "$mac"
+    return
+  fi
+
+  if mac="$(choose_paired_device)"; then
+    printf 'Trying paired headphones %s...\n' "$mac" >&2
+    if connect_device "$mac"; then
+      printf '%s\n' "$mac" > "$LAST_DEVICE_FILE"
+      printf '%s\n' "$mac"
+      return
+    fi
+    printf 'Paired headphones did not connect.\n' >&2
+  fi
+
+  if [[ "$PAIRING_ALLOWED" != "1" ]]; then
+    die "no remembered, connected, or paired Bluetooth headphones connected; rerun with --pairing to scan/pair new headphones"
+  fi
+
+  if ! stdin_interactive; then
+    die "Bluetooth pairing requires an interactive shell; rerun with --pairing from an interactive shell or run radio-play scan first"
+  fi
+
+  while true; do
+    mac="$(scan_for_device)"
+    mac="$(normalise_mac "$mac")" || die "invalid Bluetooth MAC: $mac"
+    printf 'Pairing/trusting/connecting %s...\n' "$mac" >&2
+    bluetoothctl pair "$mac" >/dev/null 2>&1 || true
+    bluetoothctl trust "$mac" >/dev/null 2>&1 || true
+    if connect_device "$mac"; then
+      printf '%s\n' "$mac" > "$LAST_DEVICE_FILE"
+      printf '%s\n' "$mac"
+      return
+    fi
+    printf 'Could not connect to %s. Keep headphones in pairing mode and try again.\n' "$mac" >&2
+  done
+}
+
+set_audio_sink() {
+  need_cmd pactl
+  local mac="$1"
+  local token
+  token="$(mac_token "$mac")"
+
+  local card
+  card="$(pactl list short cards 2>/dev/null | awk -v token="$token" '$2 ~ "bluez_card\\." token {print $2; exit}')"
+  if [[ -n "$card" ]]; then
+    pactl set-card-profile "$card" a2dp-sink >/dev/null 2>&1 || true
+  fi
+
+  local sink=""
+  local waited=0
+  while (( waited <= SINK_WAIT_SECONDS )); do
+    sink="$(pactl list short sinks 2>/dev/null | awk -v token="$token" '$2 ~ "bluez_output\\." token {print $2; exit}')"
+    [[ -n "$sink" ]] && break
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  if [[ -z "$sink" ]]; then
+    sink="$(pactl list short sinks 2>/dev/null | awk '$2 ~ /bluez_output/ {print $2; exit}')"
+  fi
+  [[ -n "$sink" ]] || die "Bluetooth audio sink did not appear. Reconnect headphones and make sure the desktop/audio session is running."
+
+  pactl set-default-sink "$sink" >/dev/null
+  printf 'Audio output: %s\n' "$sink" >&2
+}
+
+play_stream() {
+  local name="$1"
+  local url="$2"
+  local duration_seconds="${3:-0}"
+  local source="${4:-saved}"
+  local remember="${5:-0}"
+
+  if [[ "$remember" == "1" ]]; then
+    printf '%s\n' "$name" > "$LAST_STATION_FILE"
+  fi
+
+  printf 'Playing: %s\n%s\n' "$name" "$url" >&2
+  if (( duration_seconds > 0 )); then
+    printf 'Rotation timer: %s seconds\n' "$duration_seconds" >&2
+  fi
+  log_event play_start "$source" "$name" "$url" "duration_seconds=$duration_seconds"
+
+  if (( duration_seconds > 0 )); then
+    set +e
+    if command -v cvlc >/dev/null 2>&1; then
+      timeout --foreground "${duration_seconds}s" cvlc --intf dummy --no-video --network-caching=2000 "$url"
+    elif command -v ffplay >/dev/null 2>&1; then
+      timeout --foreground "${duration_seconds}s" ffplay -nodisp -autoexit "$url"
+    else
+      set -e
+      die "no supported player found; install vlc or ffmpeg"
+    fi
+    local status=$?
+    set -e
+    case "$status" in
+      0|124)
+        log_event play_stop "$source" "$name" "$url" "status=$status"
+        return 0
+        ;;
+      130|143)
+        log_event play_interrupt "$source" "$name" "$url" "status=$status"
+        exit "$status"
+        ;;
+      *)
+        log_event play_error "$source" "$name" "$url" "status=$status"
+        printf 'Player exited with status %s; rotating if more stations are available.\n' "$status" >&2
+        return 0
+        ;;
+    esac
+  fi
+
+  if command -v cvlc >/dev/null 2>&1; then
+    exec cvlc --intf dummy --no-video --network-caching=2000 "$url"
+  fi
+  if command -v ffplay >/dev/null 2>&1; then
+    exec ffplay -nodisp -autoexit "$url"
+  fi
+  die "no supported player found; install vlc or ffmpeg"
+}
+
+play_station() {
+  local name="${1:-}"
+  ensure_config
+  if [[ -z "$name" ]]; then
+    if [[ -f "$LAST_STATION_FILE" ]] && station_url "$(cat "$LAST_STATION_FILE")" >/dev/null 2>&1; then
+      name="$(cat "$LAST_STATION_FILE")"
+    else
+      name="$(pick_station)"
+    fi
+  fi
+  local url
+  url="$(station_url "$name")" || die "unknown station: $name"
+  local mac
+  mac="$(ensure_headphones)"
+  set_audio_sink "$mac"
+  play_stream "$name" "$url" 0 saved 1
+}
+
+fetch_radio_browser() {
+  local query="$1"
+  local limit="$2"
+  local country="$3"
+  local tag="$4"
+  local language="$5"
+  local codec="$6"
+  need_cmd python3
+  python3 - "$RADIO_BROWSER_API" "$query" "$limit" "$country" "$tag" "$language" "$codec" <<'PY'
+import json
+import sys
+import urllib.parse
+import urllib.request
+
+base, query, limit, country, tag, language, codec = sys.argv[1:8]
+params = {
+    "hidebroken": "true",
+    "order": "clickcount",
+    "reverse": "true",
+    "limit": limit or "20",
+}
+if query:
+    params["name"] = query
+if country:
+    params["countrycode"] = country.upper()
+if tag:
+    params["tag"] = tag
+if language:
+    params["language"] = language
+if codec:
+    params["codec"] = codec.upper()
+url = base.rstrip("/") + "/json/stations/search?" + urllib.parse.urlencode(params)
+request = urllib.request.Request(url, headers={"User-Agent": "radio-play/1.0"})
+with urllib.request.urlopen(request, timeout=25) as response:
+    payload = json.load(response)
+for item in payload:
+    name = (item.get("name") or "").replace("\t", " ").strip()
+    stream = (item.get("url_resolved") or item.get("url") or "").strip()
+    if not name or not stream.startswith(("http://", "https://")):
+        continue
+    country_name = (item.get("countrycode") or item.get("country") or "").replace("\t", " ").strip()
+    tags = (item.get("tags") or "").replace("\t", " ").strip()
+    codec_name = (item.get("codec") or "").replace("\t", " ").strip()
+    bitrate = item.get("bitrate") or ""
+    detail = f"country={country_name}; codec={codec_name}; bitrate={bitrate}; tags={tags}"
+    print(f"{name}\t{stream}\tbrowser\t{detail}")
+PY
+}
+
+fetch_icecast() {
+  local query="$1"
+  local limit="$2"
+  need_cmd python3
+  python3 - "$ICECAST_DIRECTORY_URL" "$query" "$limit" <<'PY'
+import sys
+import urllib.request
+import xml.etree.ElementTree as ET
+
+directory_url, query, limit = sys.argv[1:4]
+query = query.lower().strip()
+limit = int(limit or "20")
+request = urllib.request.Request(directory_url, headers={"User-Agent": "radio-play/1.0"})
+with urllib.request.urlopen(request, timeout=30) as response:
+    root = ET.fromstring(response.read())
+count = 0
+for entry in root.findall(".//entry"):
+    name = (entry.findtext("server_name") or "").replace("\t", " ").strip()
+    stream = (entry.findtext("listen_url") or "").strip()
+    genre = (entry.findtext("genre") or "").replace("\t", " ").strip()
+    current = (entry.findtext("current_song") or "").replace("\t", " ").strip()
+    media_type = (entry.findtext("server_type") or "").replace("\t", " ").strip()
+    bitrate = (entry.findtext("bitrate") or "").strip()
+    haystack = " ".join([name, stream, genre, current, media_type]).lower()
+    if query and query not in haystack:
+        continue
+    if not name or not stream.startswith(("http://", "https://")):
+        continue
+    detail = f"genre={genre}; type={media_type}; bitrate={bitrate}; current={current}"
+    print(f"{name}\t{stream}\ticecast\t{detail}")
+    count += 1
+    if count >= limit:
+        break
+PY
+}
+
+render_browse_rows() {
+  local rows="$1"
+  if [[ -z "$rows" ]]; then
+    printf 'No stations found.\n'
+    return
+  fi
+  printf '%s\n' "$rows" | awk -F '\t' '{printf "%2d. %s [%s]\n    %s\n    %s\n", NR, $1, $3, $2, $4}'
+}
+
+log_browse_rows() {
+  local rows="$1"
+  local detail="$2"
+  [[ -n "$rows" ]] || return 0
+  while IFS=$'\t' read -r name url source row_detail; do
+    [[ -n "$name" && -n "$url" ]] || continue
+    log_event browse_result "$source" "$name" "$url" "$detail; $row_detail"
+  done <<< "$rows"
+}
+
+pick_browsed_station() {
+  local rows="$1"
+  if ! stdin_interactive; then
+    local selected
+    selected="$(printf '%s\n' "$rows" | awk -F '\t' 'NR == 1 {print}')"
+    [[ -n "$selected" ]] || die "no station available to select"
+    printf '%s\n' "$selected"
+    return
+  fi
+  render_browse_rows "$rows" >&2
+  printf '\nPick a station number, or press Enter for 1: ' >&2
+  local choice
+  read -r choice
+  [[ -z "$choice" ]] && choice=1
+  [[ "$choice" =~ ^[0-9]+$ ]] || die "invalid station choice"
+  local selected
+  selected="$(printf '%s\n' "$rows" | awk -F '\t' -v n="$choice" 'NR == n {print}')"
+  [[ -n "$selected" ]] || die "station number not found"
+  printf '%s\n' "$selected"
+}
+
+browse_and_play() {
+  local source="$1"
+  local query="$2"
+  local limit="$3"
+  local duration_raw="$4"
+  local list_only="$5"
+  local save_played="$6"
+  local country="$7"
+  local tag="$8"
+  local language="$9"
+  local codec="${10}"
+
+  [[ "$limit" =~ ^[0-9]+$ ]] || die "invalid limit: $limit"
+  (( limit > 0 )) || die "limit must be greater than zero"
+  local duration_seconds
+  duration_seconds="$(parse_duration "$duration_raw")"
+
+  local rows
+  case "$source" in
+    browser)
+      rows="$(fetch_radio_browser "$query" "$limit" "$country" "$tag" "$language" "$codec")"
+      ;;
+    icecast)
+      rows="$(fetch_icecast "$query" "$limit")"
+      ;;
+    *)
+      die "unknown browse source: $source"
+      ;;
+  esac
+
+  [[ -n "$rows" ]] || die "no $source stations found"
+  log_browse_rows "$rows" "query=$query; limit=$limit; duration_seconds=$duration_seconds; country=$country; tag=$tag; language=$language; codec=$codec"
+
+  if [[ "$list_only" == "1" ]]; then
+    render_browse_rows "$rows"
+    return
+  fi
+
+  local mac
+  mac="$(ensure_headphones)"
+  set_audio_sink "$mac"
+
+  if (( duration_seconds <= 0 )); then
+    local selected name url row_source detail
+    selected="$(pick_browsed_station "$rows")"
+    IFS=$'\t' read -r name url row_source detail <<< "$selected"
+    if [[ "$save_played" == "1" ]]; then
+      save_station_quiet "$name" "$url"
+    fi
+    play_stream "$name" "$url" 0 "$row_source" "$save_played"
+    return
+  fi
+
+  printf 'Rotating through %s %s result(s); Ctrl+C stops playback.\n' "$(printf '%s\n' "$rows" | wc -l)" "$source" >&2
+  while true; do
+    while IFS=$'\t' read -r name url row_source detail; do
+      [[ -n "$name" && -n "$url" ]] || continue
+      if [[ "$save_played" == "1" ]]; then
+        save_station_quiet "$name" "$url"
+      fi
+      play_stream "$name" "$url" "$duration_seconds" "$row_source" "$save_played"
+    done <<< "$rows"
+  done
+}
+
+show_device() {
+  ensure_config
+  if [[ $# -gt 0 ]]; then
+    local mac
+    mac="$(normalise_mac "$1")" || die "invalid Bluetooth MAC: $1"
+    printf '%s\n' "$mac" > "$LAST_DEVICE_FILE"
+    printf 'Remembered Bluetooth device: %s\n' "$mac"
+    return
+  fi
+  if [[ -f "$LAST_DEVICE_FILE" ]]; then
+    printf 'Remembered Bluetooth device: %s\n' "$(cat "$LAST_DEVICE_FILE")"
+  else
+    printf 'No Bluetooth device remembered yet.\n'
+  fi
+}
+
+show_logs() {
+  ensure_config
+  local count="${1:-40}"
+  [[ "$count" =~ ^[0-9]+$ ]] || die "log count must be numeric"
+  tail -n "$count" "$EVENT_LOG"
+}
+
+show_config() {
+  ensure_config
+  printf 'Config directory: %s\n' "$CONFIG_DIR"
+  printf 'Stations file:    %s\n' "$STATIONS_FILE"
+  printf 'Last station:     %s\n' "$LAST_STATION_FILE"
+  printf 'Last device:      %s\n' "$LAST_DEVICE_FILE"
+  printf 'Event log:        %s\n' "$EVENT_LOG"
+  printf 'Radio Browser:    %s\n' "$RADIO_BROWSER_API"
+  printf 'Icecast URL:      %s\n' "$ICECAST_DIRECTORY_URL"
+}
+
+main_browse_flags() {
+  local source=""
+  local query=""
+  local limit=20
+  local duration=""
+  local list_only=0
+  local save_played=0
+  local country=""
+  local tag=""
+  local language=""
+  local codec=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --browser)
+        source=browser
+        shift
+        if [[ $# -gt 0 && "$1" != --* ]]; then
+          query="$1"
+          shift
+        fi
+        ;;
+      --icecast)
+        source=icecast
+        shift
+        if [[ $# -gt 0 && "$1" != --* ]]; then
+          query="$1"
+          shift
+        fi
+        ;;
+      --query)
+        [[ $# -ge 2 ]] || die "--query requires a value"
+        query="$2"
+        shift 2
+        ;;
+      --limit)
+        [[ $# -ge 2 ]] || die "--limit requires a value"
+        limit="$2"
+        shift 2
+        ;;
+      --duration|--rotate-every)
+        [[ $# -ge 2 ]] || die "$1 requires a value"
+        duration="$2"
+        shift 2
+        ;;
+      --list-only|--browse-only)
+        list_only=1
+        shift
+        ;;
+      --save)
+        save_played=1
+        shift
+        ;;
+      --country)
+        [[ $# -ge 2 ]] || die "--country requires a value"
+        country="$2"
+        shift 2
+        ;;
+      --tag)
+        [[ $# -ge 2 ]] || die "--tag requires a value"
+        tag="$2"
+        shift 2
+        ;;
+      --language)
+        [[ $# -ge 2 ]] || die "--language requires a value"
+        language="$2"
+        shift 2
+        ;;
+      --codec)
+        [[ $# -ge 2 ]] || die "--codec requires a value"
+        codec="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        return
+        ;;
+      *)
+        die "unknown browse option: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$source" ]] || die "expected --browser or --icecast"
+  browse_and_play "$source" "$query" "$limit" "$duration" "$list_only" "$save_played" "$country" "$tag" "$language" "$codec"
+}
+
+main() {
+  ensure_config
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pairing)
+        PAIRING_ALLOWED=1
+        shift
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+  set -- "${args[@]}"
+
+  if [[ "${1:-}" == --* ]]; then
+    main_browse_flags "$@"
+    return
+  fi
+
+  local cmd="${1:-}"
+  case "$cmd" in
+    "" )
+      play_station "$(pick_station)"
+      ;;
+    play )
+      shift
+      play_station "${1:-}"
+      ;;
+    add )
+      shift
+      [[ $# -eq 2 ]] || die "usage: radio-play add NAME URL"
+      add_station "$1" "$2"
+      ;;
+    remove|rm|delete )
+      shift
+      [[ $# -eq 1 ]] || die "usage: radio-play remove NAME"
+      remove_station "$1"
+      ;;
+    list|ls )
+      list_stations
+      ;;
+    device )
+      shift
+      show_device "$@"
+      ;;
+    scan )
+      PAIRING_ALLOWED=1
+      ensure_headphones >/dev/null
+      printf 'Headphones connected and remembered.\n'
+      ;;
+    logs|log|history )
+      shift
+      show_logs "${1:-40}"
+      ;;
+    config )
+      show_config
+      ;;
+    help|-h|--help )
+      usage
+      ;;
+    * )
+      die "unknown command: $cmd"
+      ;;
+  esac
+}
+
+main "$@"

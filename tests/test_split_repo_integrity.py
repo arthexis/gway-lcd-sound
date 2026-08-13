@@ -12,6 +12,7 @@ def test_bash_helpers_parse():
         ROOT / "scripts/gway/codex-sound-hook",
         ROOT / "scripts/gway/gway-event-sound-hotplug",
         ROOT / "scripts/gway/gway-toggle-gpio-sound-mute",
+        ROOT / "scripts/gway/radio-play",
         ROOT / "scripts/gway/sound.sh",
     ]
 
@@ -29,3 +30,16 @@ def test_templates_are_not_filled_with_local_bastion_identifiers():
 
 def test_documented_notification_helper_is_present():
     assert (ROOT / "scripts/gway/gway-system-notify").exists()
+
+
+def test_archived_media_shortcuts_are_packaged():
+    shortcuts = [
+        "imperial-march-gpio",
+        "mettaton-battle-start",
+        "mettaton-metal-crusher-start",
+        "radio-play",
+    ]
+
+    for shortcut in shortcuts:
+        assert (ROOT / "scripts/gway" / shortcut).exists()
+        assert (ROOT / "docs/man/man1" / f"{shortcut}.1").exists()

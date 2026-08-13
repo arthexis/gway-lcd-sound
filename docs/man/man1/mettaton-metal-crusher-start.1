@@ -1,0 +1,27 @@
+.TH METTATON-METAL-CRUSHER-START 1 "2026-08-02" "GWAY local tools" "User Commands"
+.SH NAME
+mettaton-metal-crusher-start \- play a short Metal Crusher motif on the local GPIO buzzer
+.SH SYNOPSIS
+.B mettaton-metal-crusher-start
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B mettaton-metal-crusher-start
+plays a short Metal Crusher opening motif on the configured local GPIO sound
+pin. It is intended for RFID one-shot use and respects the shared GPIO sound
+mute file.
+.PP
+The command uses RPi.GPIO, a lock file to serialize sound-hook playback, and a
+short transposed phrase so the buzzer can reproduce it clearly.
+.SH OPTIONS
+.TP
+.B --pin PIN
+GPIO BCM pin to use.
+.TP
+.B --volume N
+Volume from 0.0 to 1.0.
+.TP
+.B --dry-run
+Print the notes that would be played.
+.SH SEE ALSO
+.BR gway-toggle-gpio-sound-mute (1),
+.BR mettaton-battle-start (1)

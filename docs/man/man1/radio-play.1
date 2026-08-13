@@ -1,0 +1,148 @@
+.TH RADIO-PLAY 1 "2026-07-16" "gway-001" "User Commands"
+.SH NAME
+radio-play \- play remembered or browsed radio streams through Bluetooth audio
+.SH SYNOPSIS
+.B radio-play
+.RI [ --pairing ]
+.br
+.B radio-play play
+.RI [ name ]
+.br
+.B radio-play add
+.I name url
+.br
+.B radio-play remove
+.I name
+.br
+.B radio-play list
+.br
+.B radio-play device
+.RI [ mac ]
+.br
+.B radio-play scan
+.br
+.B radio-play
+.RI [ --pairing ]
+.B --browser
+.RI [ query ]
+.RI [ options ]
+.br
+.B radio-play
+.RI [ --pairing ]
+.B --icecast
+.RI [ query ]
+.RI [ options ]
+.SH DESCRIPTION
+.B radio-play
+connects to Bluetooth headphones or speakers and plays either remembered
+stations or browsed internet radio streams. Station names and logs are stored
+under
+.IR ~/.config/radio-play .
+.SH COMMANDS
+.TP
+.BI play " NAME"
+Play a remembered station. With no name, play the last station.
+.TP
+.BI add " NAME URL"
+Add or update a remembered station.
+.TP
+.BI remove " NAME"
+Remove a remembered station.
+.TP
+.B list
+List remembered stations.
+.TP
+.BI device " MAC"
+Show or set the remembered Bluetooth device.
+.TP
+.B scan
+Scan and connect to Bluetooth headphones.
+.TP
+.BI logs " N"
+Show recent browse/playback logs.
+.TP
+.B config
+Show local config paths.
+.SH BROWSE OPTIONS
+.TP
+.B --browser
+Browse Radio Browser stations.
+.TP
+.B --icecast
+Browse the Icecast/Xiph directory.
+.TP
+.BI --query " TEXT"
+Search text, equivalent to a positional query.
+.TP
+.BI --limit " N"
+Result count.
+.TP
+.BI --duration " 30s|10m|1h"
+Rotate to the next station after this duration.
+.TP
+.B --list-only
+List and log results without connecting or playing.
+.TP
+.B --save
+Save played browsed stations locally.
+.TP
+.BI --country " US|MX"
+Radio Browser country code filter.
+.TP
+.BI --tag " TAG"
+Radio Browser tag filter.
+.TP
+.BI --language " LANGUAGE"
+Radio Browser language filter.
+.TP
+.BI --codec " MP3|AAC"
+Radio Browser codec filter.
+.TP
+.B --pairing
+Allow scan/pairing when no paired headphones connect.
+.SH EXAMPLES
+Browse jazz stations in the US:
+.PP
+.nf
+/home/arthe/.local/bin/radio-play --browser jazz --country US --limit 10
+.fi
+.PP
+Browse and allow Bluetooth pairing:
+.PP
+.nf
+/home/arthe/.local/bin/radio-play --pairing --browser jazz --country US --limit 10
+.fi
+.PP
+Rotate ambient stations every 15 minutes and save played stations:
+.PP
+.nf
+/home/arthe/.local/bin/radio-play --browser --tag ambient --duration 15m --save
+.fi
+.PP
+Play a remembered station:
+.PP
+.nf
+/home/arthe/.local/bin/radio-play play "Station name"
+.fi
+.PP
+Show audio/Bluetooth config paths:
+.PP
+.nf
+/home/arthe/.local/bin/radio-play config
+.fi
+.SH FILES
+.TP
+.I ~/.config/radio-play/stations.tsv
+Remembered station names and stream URLs.
+.TP
+.I ~/.config/radio-play/last-station
+Last selected station.
+.TP
+.I ~/.config/radio-play/last-device
+Remembered Bluetooth device.
+.TP
+.I ~/.config/radio-play/logs/events.tsv
+Browse and playback log.
+.SH SEE ALSO
+.BR rfid-commands (1),
+.BR sound-commands (1)
