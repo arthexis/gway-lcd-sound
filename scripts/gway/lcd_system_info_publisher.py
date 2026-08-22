@@ -10,7 +10,6 @@ import re
 import shutil
 import socket
 import subprocess
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -242,45 +241,6 @@ def process_count() -> int:
         return 0
 
 
-def usb_count() -> int:
-    count = 0
-    for path in Path("/sys/bus/usb/devices").glob("*"):
-        try:
-            vendor = (path / "idVendor").read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
-        if vendor and vendor != "1d6b":
-            count += 1
-    return count
-
-
-def i2c_addresses() -> list[str]:
-    output = run(["i2cdetect", "-y", "1"], timeout=1.5)
-    addresses: list[str] = []
-    for token in output.split():
-        if re.fullmatch(r"[0-9a-fA-F]{2}", token):
-            addresses.append(token.lower())
-    return sorted(set(addresses))
-
-
-def rfid_state() -> str:
-    candidates: list[Path] = [
-        DEFAULT_ARTHEXIS_LOCK_DIR / "rfid-scan.json",
-        Path.home() / ".local" / "state" / "rfid-mode" / "rfid-scan.json",
-    ]
-    env_scan_file = os.environ.get("RFID_MODE_SCAN_FILE")
-    if env_scan_file:
-        candidates.insert(0, Path(env_scan_file))
-    now = time.time()
-    for path in candidates:
-        try:
-            age = now - path.stat().st_mtime
-        except OSError:
-            continue
-        return "rf-ok" if age < 900 else "rf-old"
-    return "rf-none"
-
-
 def journal_counts() -> tuple[int, int, str]:
     err = run(["journalctl", "--since", "-15min", "-p", "err", "--no-pager", "-q", "-n", "200"], timeout=2.5)
     warn = run(["journalctl", "--since", "-15min", "-p", "warning", "--no-pager", "-q", "-n", "300"], timeout=2.5)
@@ -337,8 +297,6 @@ def build_frames() -> list[Frame]:
     root_pct, root_free = disk_usage_label(Path("/"))
     home_pct, home_free = disk_usage_label(Path.home())
     err_count, warn_count, last_log = journal_counts()
-    addrs = i2c_addresses()
-    camera_count = len(list(Path("/dev").glob("video*")))
     failed_count = failed_systemd_count()
     throttle = throttle_label()
     services_ok = all(
@@ -356,7 +314,6 @@ def build_frames() -> list[Frame]:
         Frame("wifi", wifi_line1, wifi_line2),
         Frame("health", compact(f"HEALTH {cpu_temp_c()}"), compact(f"L{load1:.2f} RAM{ram_pct if ram_pct is not None else '?'}%")),
         Frame("disk", compact(f"DISK /{root_pct} h{home_pct}"), compact(f"free {root_free}/{home_free}")),
-        Frame("devices", compact(f"DEV usb{usb_count()} cam{camera_count}"), compact(f"i2c{','.join(addrs[:2]) or 'none'} {rfid_state()}")),
     ]
     if throttle != "thr ok":
         frames.insert(5, Frame("power", compact(f"PWR {cpu_freq_label()}"), compact(throttle)))
