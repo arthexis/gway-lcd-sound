@@ -58,6 +58,8 @@ CHANNEL_ORDER_FILE = "lcd-channels.lck"
 ROTATION_SCRIPT_FILE = "lcd-rotation.script"
 TIMINGS_FILE = "lcd-timings"
 DEFAULT_ORDER = ("high", "low", "stats", "clock")
+MIN_EVENT_SECONDS = 10.0
+DEFAULT_HIGH_HOLD_SECONDS = 60.0
 
 
 STOP = False
@@ -254,7 +256,51 @@ def load_next_event(lock_dirs: Iterable[Path], *, now: datetime) -> EventPayload
         event = parse_event_lock(path, now=now)
         if event is not None:
             return event
+    for lock_dir in lock_dirs:
+        for path in channel_lock_entries(lock_dir, CHANNEL_FILES["high"]):
+            event = parse_high_lock(path, now=now)
+            if event is not None:
+                return event
     return None
+
+
+def high_hold_seconds() -> float:
+    try:
+        return max(
+            MIN_EVENT_SECONDS,
+            float(os.environ.get("LCD_HIGH_HOLD_SECONDS", DEFAULT_HIGH_HOLD_SECONDS)),
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_HIGH_HOLD_SECONDS
+
+
+def parse_high_lock(path: Path, *, now: datetime) -> EventPayload | None:
+    """Treat legacy ``lcd-high*`` locks as preemptive, bounded events.
+
+    An ISO-8601 value on line three is an explicit hold request. Older two-line
+    sticky locks receive a lease from their mtime so a forgotten message cannot
+    suppress standby forever.
+    """
+    try:
+        raw_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        log("high-lock-read-failed", path=str(path), error=str(exc))
+        return None
+
+    expires_at = parse_datetime(raw_lines[2]) if len(raw_lines) > 2 else None
+    if expires_at is None:
+        expires_at = modified_at + timedelta(seconds=high_hold_seconds())
+    if expires_at <= now:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return None
+    lines = tuple(clean_line(line) for line in raw_lines[:2])
+    return EventPayload(lines=lines or ("", ""), expires_at=expires_at, source=path)
 
 
 def parse_channel_order(text: str) -> list[str]:
@@ -609,6 +655,7 @@ class Runner:
         self.lcd = None
         self.bus = None
         self.last_hardware_attempt = 0.0
+        self.last_rendered: tuple[str, str] | None = None
 
     def setup(self) -> None:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -688,6 +735,7 @@ class Runner:
                 self.lock_dirs,
                 driver_preference=os.environ.get("LCD_DRIVER", "auto"),
             )
+            self.last_rendered = None
             log("lcd-ready")
         except Exception as exc:
             self.lcd = None
@@ -720,15 +768,15 @@ class Runner:
     def configure_order(self) -> None:
         configured = load_channel_order(self.lock_dirs)
         if configured:
-            order = tuple(label for label in configured if self.channel_available(label))
+            order = tuple(
+                label for label in configured if label != "high" and self.channel_available(label)
+            )
             self.order = order or ("clock",)
             self.order_index %= len(self.order)
             return
 
         if self.channel_available("script"):
             normal = ("script",)
-        elif self.channel_available("high"):
-            normal = ("high", "low", "stats", "clock")
         else:
             normal = ("low", "stats", "clock")
 
@@ -765,15 +813,18 @@ class Runner:
             self.event = None
             self.event_line_index = 0
             EVENT_INTERRUPT = False
-        if self.event is not None and self.event.expires_at > now:
-            return self.event
-        if self.event is not None and self.event.expires_at <= now:
-            try:
-                self.event.source.unlink()
-            except OSError:
-                pass
-        self.event = load_next_event(self.lock_dirs, now=now)
-        self.event_line_index = 0
+        next_event = load_next_event(self.lock_dirs, now=now)
+        if next_event is None:
+            self.event = None
+            self.event_line_index = 0
+            return None
+        if (
+            self.event is None
+            or self.event.source != next_event.source
+            or self.event.lines != next_event.lines
+        ):
+            self.event_line_index = 0
+        self.event = next_event
         return self.event
 
     def event_payload(self, event: EventPayload) -> Payload:
@@ -791,6 +842,9 @@ class Runner:
     def write_frame(self, line1: str, line2: str, label: str) -> None:
         row1 = line1[:COLUMNS].ljust(COLUMNS)
         row2 = line2[:COLUMNS].ljust(COLUMNS)
+        self.ensure_lcd()
+        if self.last_rendered == (row1, row2):
+            return
         WORK_FILE.parent.mkdir(parents=True, exist_ok=True)
         WORK_FILE.write_text(f"{row1}\n{row2}\n", encoding="utf-8")
         with HISTORY_FILE.open("a", encoding="utf-8") as handle:
@@ -806,7 +860,7 @@ class Runner:
                 )
                 + "\n"
             )
-        self.ensure_lcd()
+        self.last_rendered = (row1, row2)
         if self.lcd is None:
             return
         try:
@@ -814,6 +868,7 @@ class Runner:
         except Exception as exc:
             log("lcd-write-failed", error=str(exc), label=label)
             self.lcd = None
+            self.last_rendered = None
 
     def run_once(self) -> int:
         now = now_utc()
@@ -840,7 +895,10 @@ class Runner:
                 event = self.active_event(now)
                 if event:
                     payload = self.event_payload(event)
-                    duration = min(self.args.event_seconds, max(1.0, (event.expires_at - now).total_seconds()))
+                    duration = min(
+                        max(MIN_EVENT_SECONDS, self.args.event_seconds),
+                        max(1.0, (event.expires_at - now).total_seconds()),
+                    )
                 else:
                     payload = self.current_payload(now)
                     duration = self.args.rotation_seconds
@@ -901,6 +959,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    args.event_seconds = max(MIN_EVENT_SECONDS, args.event_seconds)
     args.lock_dir = parse_lock_dirs(args.lock_dir)
     runner = Runner(args)
     if args.once:

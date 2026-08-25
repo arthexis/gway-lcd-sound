@@ -10,6 +10,12 @@ drives the local 16x2 LCD from lockfiles in the configured LCD lock
 directories. It supports normal channels, generated script frames, and
 temporary event frames.
 .PP
+Event locks preempt standby until their requested expiry. Legacy two-line
+.I lcd-high
+locks receive a bounded 60-second lease; add an ISO-8601 expiry on line three
+when a producer requires a longer hold. The runner never redraws an unchanged
+frame, avoiding flicker on a static message.
+.PP
 Routine "do nothing" payloads are filtered before rotation. This includes
 routine/no-action generated summaries, quiet log summaries, normal power,
 healthy service, and TODO/work script frames.

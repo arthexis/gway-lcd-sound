@@ -114,6 +114,12 @@ def primary_route() -> tuple[str, str, bool]:
     return iface, src, reachable
 
 
+def interface_ipv4(iface: str) -> str:
+    output = run(["ip", "-4", "-o", "addr", "show", "dev", iface], timeout=1.0)
+    match = re.search(r"\binet\s+(\d+\.\d+\.\d+\.\d+)/", output)
+    return match.group(1) if match else "-"
+
+
 def wlan_interfaces() -> list[str]:
     interfaces: list[str] = []
     for path in sorted(Path("/sys/class/net").glob("wlan*")):
@@ -291,36 +297,16 @@ def assignment_count(path: Path = DEFAULT_PRX_ASSIGNMENTS) -> int:
 def build_frames() -> list[Frame]:
     hostname = socket.gethostname().split(".")[0]
     role = read_first(DEFAULT_ARTHEXIS_LOCK_DIR / "role.lck") or "node"
-    iface, ip_addr, reachable = primary_route()
-    load1 = os.getloadavg()[0]
+    _iface, _ip_addr, _reachable = primary_route()
     ram_pct = memory_percent()
     root_pct, root_free = disk_usage_label(Path("/"))
-    home_pct, home_free = disk_usage_label(Path.home())
     err_count, warn_count, last_log = journal_counts()
-    failed_count = failed_systemd_count()
-    throttle = throttle_label()
-    services_ok = all(
-        (
-            systemctl_active("ssh.service"),
-            systemctl_active("NetworkManager.service"),
-            systemctl_active("lcd-arthexis.service"),
-            systemctl_active("lcd-lockfile.service", user=True),
-        )
-    )
-    wifi_line1, wifi_line2 = wifi_summary()
     frames = [
-        Frame("host", compact(f"HOST {hostname}"), compact(f"{role} up {format_duration(uptime_seconds())}")),
-        Frame("net", compact(f"NET {iface} {'ok' if reachable else 'no'}"), compact(ip_addr or "no primary ip")),
-        Frame("wifi", wifi_line1, wifi_line2),
-        Frame("health", compact(f"HEALTH {cpu_temp_c()}"), compact(f"L{load1:.2f} RAM{ram_pct if ram_pct is not None else '?'}%")),
-        Frame("disk", compact(f"DISK /{root_pct} h{home_pct}"), compact(f"free {root_free}/{home_free}")),
+        Frame("node", compact(hostname), compact(f"{role} {format_duration(uptime_seconds())}")),
+        Frame("health", compact(f"{cpu_temp_c()} M{ram_pct if ram_pct is not None else '?'}% D{root_pct}"), compact(f"{root_free} free")),
+        Frame("logs", compact(f"E{err_count} W{warn_count}"), compact(last_log if (err_count or warn_count) else "OK")),
+        Frame("addresses", compact(interface_ipv4("wlan0")), compact(interface_ipv4("eth0"))),
     ]
-    if throttle != "thr ok":
-        frames.insert(5, Frame("power", compact(f"PWR {cpu_freq_label()}"), compact(throttle)))
-    if failed_count or not services_ok:
-        frames.insert(6, Frame("services", compact(f"SERV fail {failed_count}"), compact(f"{'core ok' if services_ok else 'check'} p{process_count()}")))
-    if err_count or warn_count:
-        frames.append(Frame("logs", compact(f"LOG e{err_count} w{warn_count}"), compact(f"last {last_log}")))
     return frames
 
 

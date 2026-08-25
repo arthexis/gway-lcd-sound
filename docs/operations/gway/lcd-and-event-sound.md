@@ -155,6 +155,13 @@ tail -n 50 /home/arthe/.local/state/lcd-lockfile-runner/lcd-lockfile-runner.log
 cat /home/arthe/.local/state/lcd-lockfile-runner/lcd-screen.txt
 ```
 
+The lockfile runner is the sole process that writes LCD hardware. Producers
+write lockfiles only: an `lcd-event-*.lck` with an ISO-8601 expiry holds the
+screen for exactly the requested duration, while legacy two-line `lcd-high*`
+locks receive a 60-second lease. The normal standby cycle is exactly four
+unlabeled frames: node identity, combined health, log state, and AP/Ethernet
+addresses. Static text is not redrawn repeatedly.
+
 The runner auto-detects common LCD addresses `0x27`, `0x3f`, and `0x3e`. If
 those addresses are missing and the log shows `lcd-unavailable` or I/O errors,
 check wiring, display power, connector seating, and the I2C bus before changing
