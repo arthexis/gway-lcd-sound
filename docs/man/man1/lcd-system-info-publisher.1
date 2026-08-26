@@ -17,6 +17,21 @@ appear when there is something to inspect.
 .PP
 The standby rotation has four unlabeled frames: node identity, combined health,
 log status, and the AP then Ethernet IPv4 addresses.
+.PP
+The log status line is
+.BR F N
+failed systemd units,
+.BR E N
+recent journal errors,
+.BR W N
+recent journal warnings, and
+.BR U N
+boot-local Raspberry Pi undervoltage events. The second line is the selected
+journal source as
+.BR name\ x N ;
+sources with errors are preferred over warning-only sources, and
+.I N
+is that source's combined error plus warning count.
 .SH OPTIONS
 .TP
 .B --lock-dir DIR

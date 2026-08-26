@@ -163,6 +163,12 @@ locks receive a 60-second lease. The normal standby cycle is exactly four
 unlabeled frames: node identity, combined health, log state, and AP/Ethernet
 addresses. Static text is not redrawn repeatedly.
 
+The log-state frame line 1 is `F<N> E<N> W<N> U<N>`: failed systemd units,
+recent journal errors, recent journal warnings, and boot-local Raspberry Pi
+undervoltage events. Line 2 shows the highest-priority source as `name x<N>`,
+where error sources outrank warning-only sources and `N` is that source's
+combined error plus warning count.
+
 The runner auto-detects common LCD addresses `0x27`, `0x3f`, and `0x3e`. If
 those addresses are missing and the log shows `lcd-unavailable` or I/O errors,
 check wiring, display power, connector seating, and the I2C bus before changing

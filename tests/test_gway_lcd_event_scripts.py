@@ -34,15 +34,62 @@ def test_system_info_rotation_script_escapes_quotes():
 def test_system_info_standby_has_four_unlabeled_critical_frames(monkeypatch):
     monkeypatch.setattr(system_info, "primary_route", lambda: ("wlan1", "192.0.2.10", True))
     monkeypatch.setattr(system_info, "interface_ipv4", lambda iface: {"wlan0": "10.42.0.1", "eth0": "192.168.129.10"}[iface])
+    monkeypatch.setattr(system_info, "failed_systemd_count", lambda: 2)
     monkeypatch.setattr(system_info, "journal_counts", lambda: (0, 0, 3, "none"))
 
     frames = system_info.build_frames()
 
     assert [frame.key for frame in frames] == ["node", "health", "logs", "addresses"]
-    assert frames[2].line1 == "E0 W0 U3"
+    assert frames[2].line1 == "F2 E0 W0 U3"
     assert frames[-1].line1 == "10.42.0.1"
     assert frames[-1].line2 == "192.168.129.10"
     assert not frames[0].line1.startswith("HOST ")
+
+
+def test_journal_counts_prioritizes_error_source(monkeypatch):
+    def fake_run(command, timeout=2.0):
+        priority = command[command.index("-p") + 1] if "-p" in command else ""
+        if priority == "err":
+            return "\n".join(
+                [
+                    "Aug 26 10:00:00 gway-001 app[1]: err one",
+                    "Aug 26 10:00:01 gway-001 app[1]: err two",
+                    "Aug 26 10:00:02 gway-001 kernel: err three",
+                ]
+            )
+        if priority == "warning":
+            return "\n".join(
+                [
+                    "Aug 26 10:00:03 gway-001 systemd[1]: warn one",
+                    "Aug 26 10:00:04 gway-001 systemd[1]: warn two",
+                    "Aug 26 10:00:05 gway-001 app[1]: warn three",
+                ]
+            )
+        return ""
+
+    monkeypatch.setattr(system_info, "run", fake_run)
+
+    assert system_info.journal_counts() == (3, 3, 0, "app x3")
+
+
+def test_journal_counts_uses_warning_source_without_errors(monkeypatch):
+    def fake_run(command, timeout=2.0):
+        priority = command[command.index("-p") + 1] if "-p" in command else ""
+        if priority == "err":
+            return ""
+        if priority == "warning":
+            return "\n".join(
+                [
+                    "Aug 26 10:00:03 gway-001 systemd[1]: warn one",
+                    "Aug 26 10:00:04 gway-001 NetworkManager[2]: warn two",
+                    "Aug 26 10:00:05 gway-001 systemd[1]: warn three",
+                ]
+            )
+        return ""
+
+    monkeypatch.setattr(system_info, "run", fake_run)
+
+    assert system_info.journal_counts() == (0, 3, 0, "systemd x2")
 
 
 def test_high_lock_is_a_preemptive_bounded_lease(tmp_path, monkeypatch):

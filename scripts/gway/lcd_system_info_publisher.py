@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import os
 import re
@@ -240,6 +241,16 @@ def failed_systemd_count() -> int:
     return sum(1 for line in output.splitlines() if line.strip())
 
 
+def journal_source(line: str) -> str:
+    parts = line.split()
+    if len(parts) >= 5:
+        return parts[4].split("[", 1)[0].rstrip(":")
+    match = re.search(r"\s([\w@_.-]+)(?:\[\d+\])?:", line)
+    if match:
+        return match.group(1)
+    return "journal"
+
+
 def process_count() -> int:
     try:
         return sum(1 for path in Path("/proc").iterdir() if path.name.isdigit())
@@ -254,22 +265,21 @@ def journal_counts() -> tuple[int, int, int, str]:
         ["journalctl", "-b", "-k", "--no-pager", "-q", "-g", "Under-voltage detected|undervoltage"],
         timeout=2.5,
     )
-    last = ""
-    lines = [line for line in warn.splitlines() if line.strip()]
-    if lines:
-        last_line = lines[-1]
-        parts = last_line.split()
-        if len(parts) >= 5:
-            last = parts[4].split("[", 1)[0].rstrip(":")
-        else:
-            match = re.search(r"\s([\w@_.-]+)(?:\[\d+\])?:", last_line)
-            if match:
-                last = match.group(1)
+    err_lines = [line for line in err.splitlines() if line.strip()]
+    warn_lines = [line for line in warn.splitlines() if line.strip()]
+    err_sources = Counter(journal_source(line) for line in err_lines)
+    warn_sources = Counter(journal_source(line) for line in warn_lines)
+    source = ""
+    if err_sources:
+        source = err_sources.most_common(1)[0][0]
+    elif warn_sources:
+        source = warn_sources.most_common(1)[0][0]
+    source_count = err_sources[source] + warn_sources[source] if source else 0
     return (
-        len([line for line in err.splitlines() if line.strip()]),
-        len(lines),
+        len(err_lines),
+        len(warn_lines),
         len([line for line in undervoltage.splitlines() if line.strip()]),
-        last or "none",
+        f"{source} x{source_count}" if source else "none",
     )
 
 
@@ -309,14 +319,15 @@ def build_frames() -> list[Frame]:
     _iface, _ip_addr, _reachable = primary_route()
     ram_pct = memory_percent()
     root_pct, root_free = disk_usage_label(Path("/"))
-    err_count, warn_count, undervoltage_count, last_log = journal_counts()
+    failed_count = failed_systemd_count()
+    err_count, warn_count, undervoltage_count, source_label = journal_counts()
     frames = [
         Frame("node", compact(hostname), compact(f"{role} {format_duration(uptime_seconds())}")),
         Frame("health", compact(f"{cpu_temp_c()} M{ram_pct if ram_pct is not None else '?'}% D{root_pct}"), compact(f"{root_free} free")),
         Frame(
             "logs",
-            compact(f"E{err_count} W{warn_count} U{undervoltage_count}"),
-            compact(last_log if (err_count or warn_count or undervoltage_count) else "OK"),
+            compact(f"F{failed_count} E{err_count} W{warn_count} U{undervoltage_count}"),
+            compact(source_label if (failed_count or err_count or warn_count or undervoltage_count) else "OK"),
         ),
         Frame("addresses", compact(interface_ipv4("wlan0")), compact(interface_ipv4("eth0"))),
     ]
