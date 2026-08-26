@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 
-from scripts.gway import arthexis_dense_lcd_summary as dense_summary
+from scripts.gway import arthexis_deterministic_lcd_summary as deterministic_summary
 from scripts.gway import gway_eth0_node_lcd_monitor as eth0_lcd
 from scripts.gway import gway_event_sound_monitor as event_sound
 from scripts.gway import lcd_lockfile_runner as lcd_runner
@@ -34,11 +34,12 @@ def test_system_info_rotation_script_escapes_quotes():
 def test_system_info_standby_has_four_unlabeled_critical_frames(monkeypatch):
     monkeypatch.setattr(system_info, "primary_route", lambda: ("wlan1", "192.0.2.10", True))
     monkeypatch.setattr(system_info, "interface_ipv4", lambda iface: {"wlan0": "10.42.0.1", "eth0": "192.168.129.10"}[iface])
-    monkeypatch.setattr(system_info, "journal_counts", lambda: (0, 0, "none"))
+    monkeypatch.setattr(system_info, "journal_counts", lambda: (0, 0, 3, "none"))
 
     frames = system_info.build_frames()
 
     assert [frame.key for frame in frames] == ["node", "health", "logs", "addresses"]
+    assert frames[2].line1 == "E0 W0 U3"
     assert frames[-1].line1 == "10.42.0.1"
     assert frames[-1].line2 == "192.168.129.10"
     assert not frames[0].line1.startswith("HOST ")
@@ -68,6 +69,14 @@ def test_expired_high_lock_is_removed_before_standby(tmp_path, monkeypatch):
     assert not high_lock.exists()
 
 
+def test_empty_event_lock_is_removed_before_standby(tmp_path):
+    empty_event = tmp_path / "lcd-event-4.lck"
+    empty_event.write_text("", encoding="utf-8")
+
+    assert lcd_runner.load_next_event([tmp_path], now=datetime.now(timezone.utc)) is None
+    assert not empty_event.exists()
+
+
 def test_runner_does_not_rewrite_unchanged_frame(tmp_path, monkeypatch):
     parser = lcd_runner.build_parser()
     args = parser.parse_args(["--lock-dir", str(tmp_path), "--no-hardware"])
@@ -94,8 +103,8 @@ def test_eth0_lcd_formats_known_roles():
     assert eth0_lcd.fit_two_words("Raspbian", "Gateway") == "RASPBIA GWAY"
 
 
-def test_dense_lcd_summary_compacts_and_dedupes():
-    frames = dense_summary._dedupe_frames(
+def test_deterministic_lcd_summary_compacts_and_dedupes():
+    frames = deterministic_summary._dedupe_frames(
         [
             ("ERR apps.core: Task heartbeat raised unexpected: nope", "body"),
             ("ERR apps.core: Task heartbeat raised unexpected: nope", "body"),

@@ -18,7 +18,7 @@ hardware identifiers are operational state and must not be published as source.
 | `scripts/gway/lcd_lockfile_runner.py` | `/home/arthe/.local/bin/lcd-lockfile-runner` |
 | `scripts/gway/lcd_system_info_publisher.py` | `/home/arthe/.local/bin/lcd-system-info-publisher` |
 | `scripts/gway/gway_eth0_node_lcd_monitor.py` | `/home/arthe/.local/bin/gway-eth0-node-lcd-monitor` |
-| `scripts/gway/arthexis_dense_lcd_summary.py` | `/usr/local/bin/arthexis-dense-lcd-summary` |
+| `scripts/gway/arthexis_deterministic_lcd_summary.py` | `/usr/local/bin/arthexis-deterministic-lcd-summary` |
 | `scripts/gway/gway_event_sound_monitor.py` | `/home/arthe/.local/bin/gway-event-sound-monitor` |
 | `scripts/gway/gway-event-sound-hotplug` | `/home/arthe/.local/bin/gway-event-sound-hotplug` |
 | `scripts/gway/codex-sound-hook` | `/home/arthe/.local/bin/codex-sound-hook` |
@@ -37,16 +37,17 @@ hardware identifiers are operational state and must not be published as source.
 
 The 2026-07-28 rebuild inventory found these live/staging differences:
 
-- `arthexis-llm-lcd-summary.service` no longer depends on Celery.
+- `arthexis-deterministic-lcd-summary.service` no longer depends on Celery or
+  any external LLM.
 - `gway-event-sound.service` and `gway-event-sound-hotplug@.service` use the
   live `gway-*` helper names, not the older `arthexis-*` names.
 - `94-gway-event-sound.rules` targets the live `gway-*` hotplug unit names, but
   also contains private bastion USB selectors.
 
 For rebuild purposes, the repository follows installed behavior for dependency
-ordering and helper names. The dense LCD summary script is promoted from its
+ordering and helper names. The deterministic LCD summary script is promoted from its
 staging directory into repository source and installed as
-`/usr/local/bin/arthexis-dense-lcd-summary`; the systemd unit uses that stable
+`/usr/local/bin/arthexis-deterministic-lcd-summary`; the systemd unit uses that stable
 target. The udev file is a template so local bastion serials and filesystem UUIDs
 stay out of public source.
 
@@ -64,8 +65,8 @@ install -m 0755 scripts/gway/lcd_system_info_publisher.py \
   "$HOME/.local/bin/lcd-system-info-publisher"
 install -m 0755 scripts/gway/gway_eth0_node_lcd_monitor.py \
   "$HOME/.local/bin/gway-eth0-node-lcd-monitor"
-sudo install -m 0755 scripts/gway/arthexis_dense_lcd_summary.py \
-  /usr/local/bin/arthexis-dense-lcd-summary
+sudo install -m 0755 scripts/gway/arthexis_deterministic_lcd_summary.py \
+  /usr/local/bin/arthexis-deterministic-lcd-summary
 install -m 0755 scripts/gway/gway_event_sound_monitor.py \
   "$HOME/.local/bin/gway-event-sound-monitor"
 install -m 0755 scripts/gway/gway-event-sound-hotplug \
@@ -85,17 +86,17 @@ Install system services:
 ```bash
 sudo install -d -m 0755 /etc/systemd/system \
   /etc/systemd/system/lcd-arthexis.service.d \
-  /etc/systemd/system/arthexis-llm-lcd-summary.service.d
+  /etc/systemd/system/arthexis-deterministic-lcd-summary.service.d
 sudo install -m 0644 config/systemd/gway/lcd/lcd-arthexis.service \
   /etc/systemd/system/lcd-arthexis.service
 sudo install -m 0644 config/systemd/gway/lcd/lcd-arthexis.service.d/30-no-pycache.conf \
   /etc/systemd/system/lcd-arthexis.service.d/30-no-pycache.conf
-sudo install -m 0644 config/systemd/gway/lcd/arthexis-llm-lcd-summary.service \
-  /etc/systemd/system/arthexis-llm-lcd-summary.service
-sudo install -m 0644 config/systemd/gway/lcd/arthexis-llm-lcd-summary.service.d/30-no-pycache.conf \
-  /etc/systemd/system/arthexis-llm-lcd-summary.service.d/30-no-pycache.conf
-sudo install -m 0644 config/systemd/gway/lcd/arthexis-llm-lcd-summary.timer \
-  /etc/systemd/system/arthexis-llm-lcd-summary.timer
+sudo install -m 0644 config/systemd/gway/lcd/arthexis-deterministic-lcd-summary.service \
+  /etc/systemd/system/arthexis-deterministic-lcd-summary.service
+sudo install -m 0644 config/systemd/gway/lcd/arthexis-deterministic-lcd-summary.service.d/30-no-pycache.conf \
+  /etc/systemd/system/arthexis-deterministic-lcd-summary.service.d/30-no-pycache.conf
+sudo install -m 0644 config/systemd/gway/lcd/arthexis-deterministic-lcd-summary.timer \
+  /etc/systemd/system/arthexis-deterministic-lcd-summary.timer
 sudo install -m 0644 config/systemd/gway/lcd/gway-eth0-node-lcd.service \
   /etc/systemd/system/gway-eth0-node-lcd.service
 sudo install -m 0644 config/systemd/gway/event-sound/gway-event-sound.service \
@@ -121,7 +122,7 @@ install -m 0644 \
 systemctl --user daemon-reload
 systemctl --user enable --now lcd-lockfile.service lcd-system-info-publisher.timer
 sudo systemctl daemon-reload
-sudo systemctl enable --now lcd-arthexis.service arthexis-llm-lcd-summary.timer \
+sudo systemctl enable --now lcd-arthexis.service arthexis-deterministic-lcd-summary.timer \
   gway-eth0-node-lcd.service gway-event-sound.service
 ```
 
@@ -143,7 +144,7 @@ lcd-system-info-publisher --dry-run
 lcd-lockfile-runner --once --dry-run --no-hardware
 systemctl --user status lcd-lockfile.service --no-pager
 systemctl --user status lcd-system-info-publisher.timer --no-pager
-systemctl status lcd-arthexis.service arthexis-llm-lcd-summary.timer --no-pager
+systemctl status lcd-arthexis.service arthexis-deterministic-lcd-summary.timer --no-pager
 ```
 
 LCD hardware path:

@@ -12,7 +12,8 @@ commands, see
 ## Sources
 
 The summarizer uses deterministic in-process rules and a small source registry
-rather than a local model, provider API, shell prompt, or arbitrary file reads.
+rather than Codex, a local model, provider API, shell prompt, or arbitrary file
+reads.
 The default source groups are controlled by the `llm-summary-suite` feature
 parameter `enabled_sources`, with `logs,state,journal` enabled by default. The
 `max_source_bytes` parameter caps how much text any one source can contribute

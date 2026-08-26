@@ -241,9 +241,14 @@ def parse_event_lock(path: Path, *, now: datetime) -> EventPayload | None:
         except OSError:
             pass
         return None
-    if not message_lines:
-        message_lines = ["", ""]
     lines = tuple(clean_line(line) for line in message_lines)
+    if not any(line.strip() for line in lines):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        log("empty-event-lock-removed", path=str(path))
+        return None
     return EventPayload(lines=lines, expires_at=expires_at, source=path)
 
 
