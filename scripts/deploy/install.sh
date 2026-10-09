@@ -83,7 +83,7 @@ activate() {
   # Install the definition only; never enable, start, or restart this service.
   if [[ -f "$target/scripts/deploy/systemd/user/$observer_unit" ]]; then
     mkdir -p "$unit_dir"
-    link="$unit_dir/.$observer_unit.$"
+    link="$unit_dir/.$observer_unit.$$"
     ln -s "$current/scripts/deploy/systemd/user/$observer_unit" "$link"
     mv -Tf "$link" "$unit_dir/$observer_unit"
     if command -v systemctl >/dev/null; then
