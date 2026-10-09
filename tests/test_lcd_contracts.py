@@ -43,6 +43,8 @@ def test_existing_event_lock_expires_and_restores_rotation(tmp_path, lcd_module,
     runner.run_once()
     assert "event:" in capsys.readouterr().out
     (tmp_path / "lcd-event-12.lck").unlink()
+    # The running scheduler caches events until expiry; a fresh runner reloads.
+    runner = lcd_module.Runner(args)
     runner.run_once()
     assert "high:" in capsys.readouterr().out
 
