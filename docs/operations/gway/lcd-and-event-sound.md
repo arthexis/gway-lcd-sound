@@ -52,38 +52,26 @@ stay out of public source.
 
 ## Install
 
-From the repository root:
+From the repository root as the `arthe` user, use the supported
+release installer rather than copying Python packages individually:
 
 ```bash
-install -d -m 0755 "$HOME/.local/bin"
-sudo install -d -m 0755 /usr/local/bin /usr/local/libexec/gway-home-tools \
-  /usr/local/share/man/man1
-install -m 0755 scripts/gway/lcd_lockfile_runner.py \
-  "$HOME/.local/bin/lcd-lockfile-runner"
-install -d -m 0755 "$HOME/.local/bin/lcd_engine"
-install -m 0644 scripts/gway/lcd_engine/*.py "$HOME/.local/bin/lcd_engine/"
-install -d -m 0755 "$HOME/.local/bin/lcd_engine/hardware"
-install -m 0644 scripts/gway/lcd_engine/hardware/*.py "$HOME/.local/bin/lcd_engine/hardware/"
-install -m 0755 scripts/gway/lcd_system_info_publisher.py \
-  "$HOME/.local/bin/lcd-system-info-publisher"
-install -d -m 0755 "$HOME/.local/bin/lcd_engine/system_info"
-install -m 0644 scripts/gway/lcd_engine/system_info/*.py "$HOME/.local/bin/lcd_engine/system_info/"
-install -m 0755 scripts/gway/gway_eth0_node_lcd_monitor.py \
-  "$HOME/.local/bin/gway-eth0-node-lcd-monitor"
-sudo install -m 0755 scripts/gway/arthexis_dense_lcd_summary.py \
-  /usr/local/bin/arthexis-dense-lcd-summary
-install -m 0755 scripts/gway/gway_event_sound_monitor.py \
-  "$HOME/.local/bin/gway-event-sound-monitor"
-install -d -m 0755 "$HOME/.local/bin/sound_engine"
-install -m 0644 scripts/gway/sound_engine/*.py "$HOME/.local/bin/sound_engine/"
-install -m 0755 scripts/gway/gway-event-sound-hotplug \
-  "$HOME/.local/bin/gway-event-sound-hotplug"
-install -m 0755 scripts/gway/codex-sound-hook "$HOME/.local/bin/codex-sound-hook"
-install -m 0755 scripts/gway/gway-toggle-gpio-sound-mute \
-  "$HOME/.local/bin/gway-toggle-gpio-sound-mute"
-install -m 0755 scripts/gway/gway-system-notify "$HOME/.local/bin/gway-system-notify"
+bash scripts/deploy/install.sh install
+bash scripts/deploy/install.sh verify
+# If the current release is not usable:
+bash scripts/deploy/install.sh rollback
+```
+
+The installer owns host-local LCD and sound entry points, versioned releases,
+and the `current` symlink. It does not install system-wide units, udev rules,
+the root-owned audio player, man pages or private bastion selectors. These
+remain explicit administrator operations. To install those prerequisites:
+
+```bash
+sudo install -d -m 0755 /usr/local/bin /usr/local/libexec/gway-home-tools /usr/local/share/man/man1
 sudo install -m 0755 scripts/gway/sound.sh /usr/local/libexec/gway-home-tools/sound.sh
 sudo ln -sfn /usr/local/libexec/gway-home-tools/sound.sh /usr/local/bin/sound
+sudo install -m 0755 scripts/gway/arthexis_dense_lcd_summary.py /usr/local/bin/arthexis-dense-lcd-summary
 sudo install -m 0644 docs/man/man1/lcd-commands.1 /usr/local/share/man/man1/lcd-commands.1
 sudo install -m 0644 docs/man/man1/sound-commands.1 /usr/local/share/man/man1/sound-commands.1
 ```
@@ -207,17 +195,10 @@ the top row, bottom row, and UTC expiration timestamp. It bypasses rotating
 status/event frames for the duration of the job, while retaining the existing
 LCD driver and recovery behavior. Expired locks are discarded automatically.
 
-Install the publisher and the revised runner on Gway-001 from this repository:
-
-```bash
-install -m 0755 scripts/gway/lcd_lockfile_runner.py "$HOME/.local/bin/lcd-lockfile-runner"
-install -d -m 0755 "$HOME/.local/bin/lcd_engine"
-install -m 0644 scripts/gway/lcd_engine/*.py "$HOME/.local/bin/lcd_engine/"
-install -d -m 0755 "$HOME/.local/bin/lcd_engine/hardware"
-install -m 0644 scripts/gway/lcd_engine/hardware/*.py "$HOME/.local/bin/lcd_engine/hardware/"
-install -m 0755 scripts/gway/lcd-actions-runner-status "$HOME/.local/bin/lcd-actions-runner-status"
-systemctl --user restart lcd-lockfile.service
-```
+The OCPP-CSMS self-hosted CI workflow updates the sibling checkout on
+Gway-001 and calls `scripts/deploy/install.sh install --no-restart`, followed
+by `verify --no-restart`. It then smoke-tests the installed LCD and sound
+commands before starting the PR status notification.
 
 A trusted PR job in `arthexis/ocpp-csms` with the `simulator` label invokes:
 
