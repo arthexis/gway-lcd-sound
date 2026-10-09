@@ -325,6 +325,7 @@ def collect_snapshot() -> Snapshot:
     root_pct, root_free = disk_usage_label(Path("/"))
     home_pct, home_free = disk_usage_label(Path.home())
     err_count, warn_count, last_log = journal_counts()
+    wifi_line1, wifi_line2 = wifi_summary()
     return Snapshot(
         hostname=hostname, role=role, iface=iface, ip_addr=ip_addr,
         reachable=reachable, load1=os.getloadavg()[0], ram_pct=memory_percent(),
@@ -336,7 +337,7 @@ def collect_snapshot() -> Snapshot:
                          systemctl_active("NetworkManager.service"),
                          systemctl_active("lcd-arthexis.service"),
                          systemctl_active("lcd-lockfile.service", user=True))),
-        wifi_line1=wifi_summary()[0], wifi_line2=wifi_summary()[1],
+        wifi_line1=wifi_line1, wifi_line2=wifi_line2,
         uptime=uptime_seconds(), cpu_temp=cpu_temp_c(), usb_count=usb_count(),
         rfid=rfid_state(), cpu_freq=cpu_freq_label(), process_count=process_count(),
     )
