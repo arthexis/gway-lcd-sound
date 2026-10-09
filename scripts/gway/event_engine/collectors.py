@@ -39,7 +39,7 @@ def journal_entries(*, cursor: str | None, units: Iterable[str], run: Run = _run
         raise ValueError("limit must be positive")
     argv = ["journalctl", "--no-pager", "--output=json"]
     if cursor:
-        argv.append("--after-cursor=" + cursor)
+        argv.extend(["--after-cursor=" + cursor, "--lines=+" + str(limit)])
     else:
         argv.extend(["--lines", str(limit)])
     for unit in units:
