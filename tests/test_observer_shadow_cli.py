@@ -26,7 +26,7 @@ def test_shadow_emits_observation_and_notification(monkeypatch, tmp_path, capsys
     assert output[0]["state"] == "completed"
     assert output[1]["mode"] == "shadow"
     assert output[1]["sound"] == "ok"
-    assert output[1]["lcd_lines"] == ["Codex completed", "session-1"]
+    assert output[1]["lcd_lines"] == ["Codex completed", "Codex"]
     assert not (tmp_path / "lcd-event.lck").exists()
 
 
