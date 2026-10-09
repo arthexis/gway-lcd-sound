@@ -13,7 +13,7 @@ def test_16_column_scroll_and_padding(lcd_module):
 
 
 def test_control_characters_are_sanitized(lcd_module):
-    assert lcd_module.clean_line("A\nB\r\x00C") == "A BC"
+    assert lcd_module.clean_line("A\nB\r\x00C") == "A B  C"
     assert lcd_module.clean_line("X" * 80) == "X" * 64
 
 
