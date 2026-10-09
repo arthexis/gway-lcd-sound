@@ -21,6 +21,20 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# Allow the installed standalone script to locate the adjacent pure LCD engine.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lcd_engine.model import Payload, EventPayload, ChannelState
+from lcd_engine.rendering import clean_line, scroll_segment
+from lcd_engine.scheduler import Scheduler
+from lcd_engine.lockfiles import (
+    CHANNEL_FILES, KNOWN_CHANNELS, EVENT_PREFIX, EVENT_GLOB, RUNNER_LOCK,
+    CHANNEL_ORDER_FILE, ROTATION_SCRIPT_FILE, TIMINGS_FILE,
+    configure_logger, parse_datetime, is_do_nothing_payload,
+    read_channel_payload, channel_lock_entries, load_channel_payloads,
+    event_sort_key, parse_event_lock, active_runner_payload, load_next_event,
+    parse_channel_order, load_channel_order, load_rotation_script,
+)
+
 try:
     import smbus  # type: ignore
 except Exception:
@@ -41,23 +55,6 @@ LOG_FILE = STATE_DIR / "lcd-lockfile-runner.log"
 WORK_FILE = STATE_DIR / "lcd-screen.txt"
 HISTORY_FILE = STATE_DIR / "lcd-history.ndjson"
 
-CHANNEL_FILES = {
-    "high": "lcd-high",
-    "low": "lcd-low",
-    "summary": "lcd-summary",
-    "github": "lcd-github",
-    "clock": "clock",
-    "uptime": "uptime",
-    "stats": "stats",
-    "usb": "lcd-usb",
-}
-KNOWN_CHANNELS = frozenset((*CHANNEL_FILES, "script"))
-EVENT_PREFIX = "lcd-event-"
-EVENT_GLOB = "lcd-event-*.lck"
-RUNNER_LOCK = "lcd-actions-runner"
-CHANNEL_ORDER_FILE = "lcd-channels.lck"
-ROTATION_SCRIPT_FILE = "lcd-rotation.script"
-TIMINGS_FILE = "lcd-timings"
 DEFAULT_ORDER = ("high", "low", "stats", "clock")
 
 
@@ -76,263 +73,11 @@ def log(message: str, **fields: object) -> None:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
-def parse_datetime(raw: object) -> datetime | None:
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    if not text:
-        return None
-    if text.endswith(("Z", "z")):
-        text = f"{text[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def clean_line(text: object, *, limit: int = 64) -> str:
-    value = "" if text is None else str(text)
-    value = value.replace("\r\n", "\n").replace("\r", "\n")
-    value = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ", value)
-    value = "".join(ch if 32 <= ord(ch) < 127 else " " for ch in value)
-    return value[:limit]
-
-
-@dataclass(frozen=True)
-class Payload:
-    line1: str
-    line2: str
-    label: str
-    expires_at: datetime | None = None
-    source: Path | None = None
-
-    @property
-    def has_text(self) -> bool:
-        return bool(self.line1.strip() or self.line2.strip())
-
-
-@dataclass(frozen=True)
-class EventPayload:
-    lines: tuple[str, ...]
-    expires_at: datetime
-    source: Path
-
-
-@dataclass
-class ChannelState:
-    payloads: list[Payload]
-    index: int = 0
-
-    def next(self) -> Payload | None:
-        if not self.payloads:
-            return None
-        payload = self.payloads[self.index % len(self.payloads)]
-        self.index = (self.index + 1) % len(self.payloads)
-        return payload
-
-
-def is_do_nothing_payload(line1: str, line2: str, label: str) -> bool:
-    compacted = re.sub(r"\s+", " ", f"{line1} {line2}".strip().lower())
-    if label in {"low", "summary"}:
-        if "routine" in compacted and ("no action" in compacted or "0x/60m" in compacted):
-            return True
-        if "no err/wrn logs" in compacted or "ok no err/warn" in compacted:
-            return True
-    if label == "script":
-        if compacted.startswith("work ") and "todo" in compacted:
-            return True
-        if compacted.startswith("log e0 w0") and "last none" in compacted:
-            return True
-        if compacted.startswith("serv fail 0") and "core ok" in compacted:
-            return True
-        if compacted.startswith("pwr ") and "thr ok" in compacted:
-            return True
-    return False
-
-
-def read_channel_payload(path: Path, label: str, *, now: datetime) -> Payload | None:
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        log("lock-read-failed", path=str(path), error=str(exc))
-        return None
-
-    expires_at = parse_datetime(lines[2]) if len(lines) > 2 else None
-    if expires_at and expires_at <= now:
-        try:
-            path.unlink()
-        except OSError:
-            pass
-        return None
-    line1 = clean_line(lines[0] if lines else "")
-    line2 = clean_line(lines[1] if len(lines) > 1 else "")
-    if is_do_nothing_payload(line1, line2, label):
-        return None
-    return Payload(line1=line1, line2=line2, label=label, expires_at=expires_at, source=path)
-
-
-def channel_lock_entries(lock_dir: Path, base_name: str) -> list[Path]:
-    if not lock_dir.is_dir():
-        return []
-    entries: list[tuple[int, Path]] = []
-    prefix = f"{base_name}-"
-    for path in lock_dir.iterdir():
-        name = path.name
-        if name == base_name:
-            entries.append((0, path))
-        elif name.startswith(prefix):
-            suffix = name[len(prefix) :]
-            if suffix.isdigit():
-                entries.append((int(suffix), path))
-    return [path for _num, path in sorted(entries, key=lambda item: item[0])]
-
-
-def load_channel_payloads(lock_dirs: Iterable[Path], channel: str, *, now: datetime) -> list[Payload]:
-    base_name = CHANNEL_FILES[channel]
-    payloads: list[Payload] = []
-    for lock_dir in lock_dirs:
-        for path in channel_lock_entries(lock_dir, base_name):
-            payload = read_channel_payload(path, channel, now=now)
-            if payload and payload.has_text:
-                payloads.append(payload)
-    return payloads
-
-
-def event_sort_key(path: Path) -> tuple[int, str]:
-    name = path.name
-    if name.startswith(EVENT_PREFIX) and name.endswith(".lck"):
-        suffix = name[len(EVENT_PREFIX) : -4]
-        if suffix.isdigit():
-            return int(suffix), name
-    return 10**9, name
-
-
-def parse_event_lock(path: Path, *, now: datetime) -> EventPayload | None:
-    try:
-        raw_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        log("event-read-failed", path=str(path), error=str(exc))
-        return None
-
-    expires_at: datetime | None = None
-    message_lines = raw_lines[:]
-    if raw_lines:
-        candidate = parse_datetime(raw_lines[-1])
-        if candidate is not None:
-            expires_at = candidate
-            message_lines = raw_lines[:-1]
-    if expires_at is None:
-        expires_at = now + timedelta(hours=1)
-    if expires_at <= now:
-        try:
-            path.unlink()
-        except OSError:
-            pass
-        return None
-    if not message_lines:
-        message_lines = ["", ""]
-    lines = tuple(clean_line(line) for line in message_lines)
-    return EventPayload(lines=lines, expires_at=expires_at, source=path)
-
-
-def active_runner_payload(lock_dirs: Iterable[Path], *, now: datetime) -> Payload | None:
-    """Persistent high-priority frame, expiring after abrupt job termination."""
-    for lock_dir in lock_dirs:
-        payload = read_channel_payload(lock_dir / RUNNER_LOCK, "actions-runner", now=now)
-        if payload and payload.has_text and payload.expires_at is not None:
-            return payload
-    return None
-
-
-def load_next_event(lock_dirs: Iterable[Path], *, now: datetime) -> EventPayload | None:
-    candidates: list[Path] = []
-    for lock_dir in lock_dirs:
-        if lock_dir.is_dir():
-            candidates.extend(lock_dir.glob(EVENT_GLOB))
-    for path in sorted(candidates, key=event_sort_key):
-        event = parse_event_lock(path, now=now)
-        if event is not None:
-            return event
-    return None
-
-
-def parse_channel_order(text: str) -> list[str]:
-    channels: list[str] = []
-    seen: set[str] = set()
-    for raw_line in text.splitlines():
-        line = raw_line.split("#", 1)[0]
-        if not line.strip():
-            continue
-        for token in line.replace(",", " ").split():
-            value = token.strip().lower()
-            if value in {"full", "all"}:
-                value = "event"
-            if value == "uptime":
-                value = "stats"
-            if not value or value == "event" or value in seen:
-                continue
-            if value in KNOWN_CHANNELS:
-                seen.add(value)
-                channels.append(value)
-    return channels
-
-
-def load_channel_order(lock_dirs: Iterable[Path]) -> list[str] | None:
-    for lock_dir in lock_dirs:
-        path = lock_dir / CHANNEL_ORDER_FILE
-        try:
-            text = path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            log("channel-order-read-failed", path=str(path), error=str(exc))
-            continue
-        order = parse_channel_order(text)
-        if order:
-            return order
-    return None
-
-
-def load_rotation_script(lock_dirs: Iterable[Path], *, now: datetime) -> list[Payload]:
-    payloads: list[Payload] = []
-    for lock_dir in lock_dirs:
-        path = lock_dir / ROTATION_SCRIPT_FILE
-        try:
-            text = path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            log("rotation-script-read-failed", path=str(path), error=str(exc))
-            continue
-        for line in text.splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-            if not stripped.startswith("frame "):
-                continue
-            parts = re.findall(r'"([^"]*)"', stripped)
-            if not parts:
-                continue
-            payloads.append(
-                Payload(
-                    line1=clean_line(parts[0]),
-                    line2=clean_line(parts[1] if len(parts) > 1 else ""),
-                    label="script",
-                    source=path,
-                )
-            )
-    return payloads
+configure_logger(log)
 
 
 def boot_seconds() -> int | None:
@@ -841,6 +586,13 @@ class Runner:
 
     def run_forever(self) -> int:
         self.setup()
+        scheduler = Scheduler(
+            rotation_seconds=self.args.rotation_seconds,
+            event_seconds=self.args.event_seconds,
+        )
+        normal_payload: Payload | None = None
+        event_payload: Payload | None = None
+        event_source: Path | None = None
         try:
             while not STOP:
                 if self.args.stop_embedded:
@@ -848,44 +600,38 @@ class Runner:
                 now = now_utc()
                 self.load_channels(now)
                 self.configure_order()
+                if normal_payload is None:
+                    normal_payload = self.current_payload(now)
                 runner = active_runner_payload(self.lock_dirs, now=now)
                 event = self.active_event(now) if runner is None else None
-                if runner:
-                    payload = runner
-                    duration = self.args.poll_seconds
-                elif event:
-                    payload = self.event_payload(event)
-                    duration = min(self.args.event_seconds, max(1.0, (event.expires_at - now).total_seconds()))
-                else:
-                    payload = self.current_payload(now)
-                    duration = self.args.rotation_seconds
-                started = time.monotonic()
-                step = 0
-                while not STOP and time.monotonic() - started < duration:
-                    line1, line2 = self.frame_for_payload(payload, step)
-                    self.write_frame(line1, line2, payload.label)
-                    step += 1
-                    time.sleep(self.args.poll_seconds)
-                    if EVENT_INTERRUPT or active_runner_payload(self.lock_dirs, now=now_utc()) != runner:
-                        break
-                if not event and self.order:
-                    self.order_index = (self.order_index + 1) % len(self.order)
+                if event is None:
+                    event_payload = None
+                    event_source = None
+                elif event_payload is None or event.source != event_source:
+                    event_source = event.source
+                    event_payload = self.event_payload(event)
+                choice = scheduler.tick(
+                    now=now,
+                    monotonic=time.monotonic(),
+                    runner=runner,
+                    event=event_payload,
+                    normal=normal_payload,
+                )
+                line1, line2 = self.frame_for_payload(choice.payload, choice.scroll_step)
+                self.write_frame(line1, line2, choice.payload.label)
+                if choice.advance_normal:
+                    if self.order:
+                        self.order_index = (self.order_index + 1) % len(self.order)
+                    normal_payload = None
+                if choice.advance_event:
+                    event_payload = None
+                time.sleep(self.args.poll_seconds)
         finally:
             self.cleanup_pid_files()
             if self.bus is not None:
                 self.bus.close()
             log("runner-stop")
         return 0
-
-
-def scroll_segment(text: str, step: int) -> str:
-    clean = clean_line(text)
-    if len(clean) <= COLUMNS:
-        return clean.ljust(COLUMNS)
-    padded = f"{clean}   "
-    span = max(len(padded) - COLUMNS + 1, 1)
-    index = step % span
-    return padded[index : index + COLUMNS].ljust(COLUMNS)
 
 
 def parse_lock_dirs(values: list[str] | None) -> list[Path]:
