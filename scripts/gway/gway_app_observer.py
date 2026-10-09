@@ -85,6 +85,13 @@ def run_observer(args):
                              play_sound=lambda sound: subprocess.run(
                                  [str(args.sound_command), sound], check=True, timeout=20))
     while not _STOP:
+        if mode == "observer":
+            try:
+                if args.ownership_file.read_text(encoding="utf-8").strip() != "observer-owns-notifications":
+                    raise ValueError("ownership acknowledgement revoked")
+            except (OSError, ValueError) as exc:
+                print(json.dumps({"observer_error": "ownership", "error": str(exc)}), flush=True)
+                return 3
         # Source failures are isolated; one broken source cannot stop others.
         sources = [("sessions", lambda: poll_codex_sessions(store, args.codex_sessions, deliver=emit))]
         if not args.no_processes:
@@ -94,7 +101,7 @@ def run_observer(args):
         for name, poll in sources:
             try:
                 poll()
-            except (OSError, ValueError, RuntimeError, ImportError) as exc:
+            except (OSError, ValueError, RuntimeError, ImportError, subprocess.SubprocessError) as exc:
                 print(json.dumps({"observer_error": name, "error": str(exc)}), flush=True)
         if args.once:
             break
