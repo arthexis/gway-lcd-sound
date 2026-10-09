@@ -62,6 +62,8 @@ install -m 0755 scripts/gway/lcd_lockfile_runner.py \
   "$HOME/.local/bin/lcd-lockfile-runner"
 install -d -m 0755 "$HOME/.local/bin/lcd_engine"
 install -m 0644 scripts/gway/lcd_engine/*.py "$HOME/.local/bin/lcd_engine/"
+install -d -m 0755 "$HOME/.local/bin/lcd_engine/hardware"
+install -m 0644 scripts/gway/lcd_engine/hardware/*.py "$HOME/.local/bin/lcd_engine/hardware/"
 install -m 0755 scripts/gway/lcd_system_info_publisher.py \
   "$HOME/.local/bin/lcd-system-info-publisher"
 install -m 0755 scripts/gway/gway_eth0_node_lcd_monitor.py \
@@ -207,6 +209,8 @@ Install the publisher and the revised runner on Gway-001 from this repository:
 install -m 0755 scripts/gway/lcd_lockfile_runner.py "$HOME/.local/bin/lcd-lockfile-runner"
 install -d -m 0755 "$HOME/.local/bin/lcd_engine"
 install -m 0644 scripts/gway/lcd_engine/*.py "$HOME/.local/bin/lcd_engine/"
+install -d -m 0755 "$HOME/.local/bin/lcd_engine/hardware"
+install -m 0644 scripts/gway/lcd_engine/hardware/*.py "$HOME/.local/bin/lcd_engine/hardware/"
 install -m 0755 scripts/gway/lcd-actions-runner-status "$HOME/.local/bin/lcd-actions-runner-status"
 systemctl --user restart lcd-lockfile.service
 ```
