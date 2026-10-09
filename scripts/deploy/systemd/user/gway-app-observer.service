@@ -7,7 +7,7 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/gway-app-observer --notification-mode shadow --no-processes
+ExecStart=%h/.local/bin/gway-app-observer --notification-mode shadow --no-processes --csms-data %h/ocpp-csms-data
 Restart=on-failure
 RestartSec=5s
 WorkingDirectory=%h
