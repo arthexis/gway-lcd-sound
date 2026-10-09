@@ -10,7 +10,7 @@ def test_output_plan_has_lcd_and_audio_intentions():
     assert output_plan(notification) == {
         "source": "codex-turn",
         "subject": "session-1",
-        "lcd_lines": ("Codex completed", "session-1"),
+        "lcd_lines": ("Codex completed", "Codex"),
         "sound": "ok",
     }
 
