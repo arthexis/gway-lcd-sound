@@ -21,6 +21,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# Allow the installed standalone script to locate the adjacent pure LCD engine.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lcd_engine.model import Payload, EventPayload, ChannelState
+from lcd_engine.rendering import clean_line, scroll_segment
+from lcd_engine.scheduler import Scheduler
+
 try:
     import smbus  # type: ignore
 except Exception:
@@ -95,47 +101,6 @@ def parse_datetime(raw: object) -> datetime | None:
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def clean_line(text: object, *, limit: int = 64) -> str:
-    value = "" if text is None else str(text)
-    value = value.replace("\r\n", "\n").replace("\r", "\n")
-    value = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ", value)
-    value = "".join(ch if 32 <= ord(ch) < 127 else " " for ch in value)
-    return value[:limit]
-
-
-@dataclass(frozen=True)
-class Payload:
-    line1: str
-    line2: str
-    label: str
-    expires_at: datetime | None = None
-    source: Path | None = None
-
-    @property
-    def has_text(self) -> bool:
-        return bool(self.line1.strip() or self.line2.strip())
-
-
-@dataclass(frozen=True)
-class EventPayload:
-    lines: tuple[str, ...]
-    expires_at: datetime
-    source: Path
-
-
-@dataclass
-class ChannelState:
-    payloads: list[Payload]
-    index: int = 0
-
-    def next(self) -> Payload | None:
-        if not self.payloads:
-            return None
-        payload = self.payloads[self.index % len(self.payloads)]
-        self.index = (self.index + 1) % len(self.payloads)
-        return payload
 
 
 def is_do_nothing_payload(line1: str, line2: str, label: str) -> bool:
@@ -841,6 +806,13 @@ class Runner:
 
     def run_forever(self) -> int:
         self.setup()
+        scheduler = Scheduler(
+            rotation_seconds=self.args.rotation_seconds,
+            event_seconds=self.args.event_seconds,
+        )
+        normal_payload: Payload | None = None
+        event_payload: Payload | None = None
+        event_source: Path | None = None
         try:
             while not STOP:
                 if self.args.stop_embedded:
@@ -848,44 +820,38 @@ class Runner:
                 now = now_utc()
                 self.load_channels(now)
                 self.configure_order()
+                if normal_payload is None:
+                    normal_payload = self.current_payload(now)
                 runner = active_runner_payload(self.lock_dirs, now=now)
                 event = self.active_event(now) if runner is None else None
-                if runner:
-                    payload = runner
-                    duration = self.args.poll_seconds
-                elif event:
-                    payload = self.event_payload(event)
-                    duration = min(self.args.event_seconds, max(1.0, (event.expires_at - now).total_seconds()))
-                else:
-                    payload = self.current_payload(now)
-                    duration = self.args.rotation_seconds
-                started = time.monotonic()
-                step = 0
-                while not STOP and time.monotonic() - started < duration:
-                    line1, line2 = self.frame_for_payload(payload, step)
-                    self.write_frame(line1, line2, payload.label)
-                    step += 1
-                    time.sleep(self.args.poll_seconds)
-                    if EVENT_INTERRUPT or active_runner_payload(self.lock_dirs, now=now_utc()) != runner:
-                        break
-                if not event and self.order:
-                    self.order_index = (self.order_index + 1) % len(self.order)
+                if event is None:
+                    event_payload = None
+                    event_source = None
+                elif event_payload is None or event.source != event_source:
+                    event_source = event.source
+                    event_payload = self.event_payload(event)
+                choice = scheduler.tick(
+                    now=now,
+                    monotonic=time.monotonic(),
+                    runner=runner,
+                    event=event_payload,
+                    normal=normal_payload,
+                )
+                line1, line2 = self.frame_for_payload(choice.payload, choice.scroll_step)
+                self.write_frame(line1, line2, choice.payload.label)
+                if choice.advance_normal:
+                    if self.order:
+                        self.order_index = (self.order_index + 1) % len(self.order)
+                    normal_payload = None
+                if choice.advance_event:
+                    event_payload = None
+                time.sleep(self.args.poll_seconds)
         finally:
             self.cleanup_pid_files()
             if self.bus is not None:
                 self.bus.close()
             log("runner-stop")
         return 0
-
-
-def scroll_segment(text: str, step: int) -> str:
-    clean = clean_line(text)
-    if len(clean) <= COLUMNS:
-        return clean.ljust(COLUMNS)
-    padded = f"{clean}   "
-    span = max(len(padded) - COLUMNS + 1, 1)
-    index = step % span
-    return padded[index : index + COLUMNS].ljust(COLUMNS)
 
 
 def parse_lock_dirs(values: list[str] | None) -> list[Path]:
