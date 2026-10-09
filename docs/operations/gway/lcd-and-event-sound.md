@@ -74,6 +74,8 @@ sudo install -m 0755 scripts/gway/arthexis_dense_lcd_summary.py \
   /usr/local/bin/arthexis-dense-lcd-summary
 install -m 0755 scripts/gway/gway_event_sound_monitor.py \
   "$HOME/.local/bin/gway-event-sound-monitor"
+install -d -m 0755 "$HOME/.local/bin/sound_engine"
+install -m 0644 scripts/gway/sound_engine/*.py "$HOME/.local/bin/sound_engine/"
 install -m 0755 scripts/gway/gway-event-sound-hotplug \
   "$HOME/.local/bin/gway-event-sound-hotplug"
 install -m 0755 scripts/gway/codex-sound-hook "$HOME/.local/bin/codex-sound-hook"
