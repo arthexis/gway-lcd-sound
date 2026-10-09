@@ -43,3 +43,12 @@ def test_archived_media_shortcuts_are_packaged():
     for shortcut in shortcuts:
         assert (ROOT / "scripts/gway" / shortcut).exists()
         assert (ROOT / "docs/man/man1" / f"{shortcut}.1").exists()
+
+
+def test_actions_runner_sound_dropin_nonfatal_and_bounded():
+    dropin = ROOT / "config/systemd/gway/actions-runner/20-gway-sound.conf"
+    content = dropin.read_text(encoding="utf-8")
+    assert "CODEX_SOUND_HOOK_LOCK_WAIT=0" in content
+    assert "CODEX_SOUND_HOOK_TIMEOUT=2" in content
+    assert "ExecStartPost=-/home/arthe/.local/bin/codex-sound-hook actions-runner-start notice" in content
+    assert "ExecStopPost=-/home/arthe/.local/bin/codex-sound-hook actions-runner-stop warning" in content
