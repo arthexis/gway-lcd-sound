@@ -218,6 +218,10 @@ class Runner:
         if not force and now - self.last_hardware_attempt < 30:
             return
         self.last_hardware_attempt = now
+        if self.lcd is not None:
+            self.lcd.close()
+            self.lcd = None
+            self.bus = None
         try:
             self.lcd, self.bus = prepare_lcd(
                 self.lock_dirs,
@@ -226,11 +230,6 @@ class Runner:
             log("lcd-ready")
         except Exception as exc:
             self.lcd = None
-            if self.bus is not None:
-                try:
-                    self.bus.close()
-                except Exception:
-                    pass
             self.bus = None
             log("lcd-unavailable", error=str(exc))
 
@@ -348,7 +347,12 @@ class Runner:
             self.lcd.write_frame(row1, row2)
         except Exception as exc:
             log("lcd-write-failed", error=str(exc), label=label)
+            try:
+                self.lcd.close()
+            except Exception:
+                pass
             self.lcd = None
+            self.bus = None
 
     def run_once(self) -> int:
         now = now_utc()
@@ -408,8 +412,8 @@ class Runner:
                 time.sleep(self.args.poll_seconds)
         finally:
             self.cleanup_pid_files()
-            if self.bus is not None:
-                self.bus.close()
+            if self.lcd is not None:
+                self.lcd.close()
             log("runner-stop")
         return 0
 
