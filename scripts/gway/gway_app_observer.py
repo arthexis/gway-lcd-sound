@@ -13,6 +13,7 @@ from event_engine.state import CheckpointStore
 from event_engine.notification_rules import evaluate
 from event_engine.notification_outputs import deliver_shadow
 from event_engine.notification_journal import NotificationJournal
+from event_engine.observer_lock import ObserverLock, ObserverAlreadyRunning
 
 _STOP = False
 
@@ -37,6 +38,15 @@ def main(argv=None):
         parser.error("--poll-seconds must be at least 1")
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+    try:
+        with ObserverLock(args.state.with_suffix(args.state.suffix + ".lock")):
+            return run_observer(args)
+    except ObserverAlreadyRunning as exc:
+        print(json.dumps({"observer_error": "already-running", "error": str(exc)}), flush=True)
+        return 2
+
+
+def run_observer(args):
     store = CheckpointStore(args.state)
     mode = "shadow" if args.shadow else args.notification_mode
     journal = NotificationJournal(args.notification_journal or args.state.with_name("notification-journal.json")) if mode == "shadow" else None
@@ -45,7 +55,7 @@ def main(argv=None):
         if mode == "shadow":
             notification = evaluate(event)
             if notification is not None:
-                if journal.status(event) != "shadowed":
+                if journal.status(event) not in {"shadowed", "delivered"}:
                     deliver_shadow(notification)
                     journal.record(event, "shadowed")
     while not _STOP:
