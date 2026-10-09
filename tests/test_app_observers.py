@@ -1,15 +1,18 @@
 from pathlib import Path
 import sys
+import sqlite3
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts' / 'gway'))
 from event_engine.app_collectors import classify_ocpp
+from event_engine.app_collectors import codex_processes
+from event_engine.app_observer import poll_codex
+from event_engine.state import CheckpointStore
+from event_engine.app_observer import poll_csms
+
 
 def test_transaction_classification():
     assert classify_ocpp('StartTransaction', 'in') == 'transaction'
     assert classify_ocpp('BootNotification', 'in') == 'status'
 
-from event_engine.app_collectors import codex_processes
-from event_engine.app_observer import poll_codex
-from event_engine.state import CheckpointStore
 
 def test_codex_snapshot(tmp_path):
     proc = tmp_path / 'proc'
@@ -25,8 +28,6 @@ def test_codex_snapshot(tmp_path):
     assert poll_codex(store, collect=lambda: events, deliver=seen.append) == 1
     assert poll_codex(CheckpointStore(store.path), collect=lambda: events, deliver=seen.append) == 0
 
-import sqlite3
-from event_engine.app_observer import poll_csms
 
 def test_csms_restart_cursor(tmp_path):
     database = tmp_path / 'ocpp-csms.sqlite3'
