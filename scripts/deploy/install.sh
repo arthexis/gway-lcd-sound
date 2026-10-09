@@ -20,6 +20,8 @@ bin_dir="${GWAY_LCD_SOUND_BIN_DIR:-$HOME/.local/bin}"
 current="$prefix/current"
 previous="$prefix/previous"
 releases="$prefix/releases"
+unit_dir="${GWAY_LCD_SOUND_UNIT_DIR:-$HOME/.config/systemd/user}"
+observer_unit="gway-app-observer.service"
 
 # Entry-point symlinks stay fixed, while their resolved targets switch releases.
 commands=(
@@ -45,6 +47,14 @@ verify() {
   "$bin_dir/lcd-system-info-publisher" --help >/dev/null
   "$bin_dir/gway-event-sound-monitor" --help >/dev/null
   "$bin_dir/gway-app-observer" --help >/dev/null
+  if [[ -f "$current/scripts/deploy/systemd/user/$observer_unit" ]]; then
+    [[ -L "$unit_dir/$observer_unit" && "$(readlink "$unit_dir/$observer_unit")" == "$current/scripts/deploy/systemd/user/$observer_unit" ]] || {
+      echo "Missing or unexpected observer user unit: $unit_dir/$observer_unit" >&2; return 1;
+    }
+    grep -q -- "--notification-mode shadow" "$unit_dir/$observer_unit" || {
+      echo "Observer unit must remain in shadow mode" >&2; return 1;
+    }
+  fi
   PYTHONDONTWRITEBYTECODE=1 python3 - "$current/scripts/gway" <<'PY'
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))
@@ -68,6 +78,18 @@ activate() {
     ln -s "$current/scripts/gway/$file" "$link"
     mv -Tf "$link" "$bin_dir/$cmd"
   done
+  # Install the definition only; never enable, start, or restart this service.
+  if [[ -f "$target/scripts/deploy/systemd/user/$observer_unit" ]]; then
+    mkdir -p "$unit_dir"
+    link="$unit_dir/.$observer_unit.$"
+    ln -s "$current/scripts/deploy/systemd/user/$observer_unit" "$link"
+    mv -Tf "$link" "$unit_dir/$observer_unit"
+    if command -v systemctl >/dev/null; then
+      systemctl --user daemon-reload || echo "Warning: user daemon-reload unavailable; run it after login" >&2
+    fi
+  elif [[ -L "$unit_dir/$observer_unit" && "$(readlink "$unit_dir/$observer_unit")" == "$current/scripts/deploy/systemd/user/$observer_unit" ]]; then
+    rm "$unit_dir/$observer_unit"
+  fi
 }
 maybe_restart() {
   if [[ "$restart" == 1 ]] && command -v systemctl >/dev/null; then
@@ -86,6 +108,10 @@ case "$action" in
       trap 'rm -rf "$staging"' EXIT
       mkdir -p "$staging/scripts"
       cp -a "$source_dir/scripts/gway" "$staging/scripts/gway"
+      if [[ -f "$source_dir/scripts/deploy/systemd/user/$observer_unit" ]]; then
+        mkdir -p "$staging/scripts/deploy/systemd/user"
+        cp "$source_dir/scripts/deploy/systemd/user/$observer_unit" "$staging/scripts/deploy/systemd/user/$observer_unit"
+      fi
       chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py"
       PYTHONDONTWRITEBYTECODE=1 python3 - "$staging/scripts/gway" <<'PY'
 import pathlib, sys
