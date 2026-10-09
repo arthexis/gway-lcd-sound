@@ -1,6 +1,7 @@
 """Application polling with acknowledged cursor advancement."""
 from __future__ import annotations
 from pathlib import Path
+from dataclasses import replace
 from collections.abc import Callable
 from .app_collectors import csms_events, codex_processes
 from .model import Event
@@ -115,6 +116,9 @@ def poll_codex_sessions(store: CheckpointStore, root: Path, *,
         for record, next_offset in session_records(path, offset=offset, limit=limit):
             event = lifecycle_event(record, path)
             if event is not None:
+                # The byte position uniquely identifies a lifecycle occurrence,
+                # including repeated turns in the same session JSONL file.
+                event = replace(event, event_id=f"{source}:{next_offset}")
                 deliver(event)
                 count += 1
             store.set_cursor(source, str(next_offset))
