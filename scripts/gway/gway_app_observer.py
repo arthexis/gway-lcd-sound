@@ -35,7 +35,7 @@ def main(argv=None):
                         help="legacy: no output; shadow: plans only; observer: gated live delivery")
     parser.add_argument("--notification-journal", type=Path, default=None)
     parser.add_argument("--lcd-dir", type=Path, default=None, help="existing LCD event lockfile directory")
-    parser.add_argument("--sound-command", type=Path, default=None, help="explicit executable accepting one sound name argument")
+    parser.add_argument("--sound-command", type=Path, default=None, help="codex-sound-hook-compatible executable accepting event name and sound name")
     parser.add_argument("--ownership-file", type=Path, default=None, help="file containing exact acknowledgement: observer-owns-notifications")
     parser.add_argument("--poll-seconds", type=float, default=4.0)
     args = parser.parse_args(argv)
@@ -83,7 +83,7 @@ def run_observer(args):
             if notification is not None and journal.status(event) != "delivered":
                 deliver_live(event, notification, journal, lcd_dir=args.lcd_dir,
                              play_sound=lambda sound: subprocess.run(
-                                 [str(args.sound_command), sound], check=True, timeout=20))
+                                 [str(args.sound_command), "observer-notification", sound], check=True, timeout=20))
     while not _STOP:
         if mode == "observer":
             try:
