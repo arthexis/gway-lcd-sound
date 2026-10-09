@@ -1,0 +1,27 @@
+name: Deploy LCD Sound to Gway-001
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch pinned deployment to trusted remote runner
+        env:
+          GH_TOKEN: ${{ secrets.GWAY_REMOTE_DISPATCH_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::Configure GWAY_REMOTE_DISPATCH_TOKEN with Actions write access to arthexis/gway-remote"
+            exit 1
+          fi
+          gh api -X POST repos/arthexis/gway-remote/dispatches \
+            -f event_type=lcd-sound-deploy \
+            -f client_payload[repository]=arthexis/gway-lcd-sound \
+            -f client_payload[sha]="$SHA"
