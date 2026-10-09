@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install test runner
-        run: python3 -m pip install pytest
+        run: python3 -m pip install pytest pytest-cov ruff
       - name: Validate Python helper syntax
         run: python3 -m compileall -q scripts/gway
       - name: Validate shell helper syntax
@@ -25,5 +25,15 @@ jobs:
           for script in scripts/gway/codex-sound-hook scripts/gway/lcd-actions-runner-status scripts/gway/gway-event-sound-hotplug scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh scripts/gway/radio-play; do
             bash -n "$script"
           done
-      - name: Run hardware-free contracts
-        run: python3 -m pytest -q tests
+      - name: Lint high-signal errors in test harness
+        run: python3 -m ruff check --select E4,E7,E9,F63,F7,F82 tests
+      - name: Run hardware-free contracts with branch coverage
+        run: |
+          python3 -m pytest -q tests --cov=scripts.gway.lcd_engine --cov=scripts.gway.sound_engine --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcd-sound-coverage
+          path: coverage.xml
+          if-no-files-found: ignore
