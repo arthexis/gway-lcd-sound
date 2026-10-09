@@ -7,19 +7,7 @@ from scripts.gway.lcd_engine.hardware.pcf8574 import PCF8574LCD, LCDTimings
 from scripts.gway.lcd_engine.hardware.aip31068 import AiP31068LCD
 
 
-class FakeBus:
-    def __init__(self, channel=1):
-        self.operations = []
-        self.closed = False
-
-    def write_byte(self, address, value):
-        self.operations.append(("byte", address, value))
-
-    def write_byte_data(self, address, command, value):
-        self.operations.append(("data", address, command, value))
-
-    def close(self):
-        self.closed = True
+from tests.fixtures.hardware import RecordingBus as FakeBus
 
 
 @pytest.mark.parametrize(("addresses", "preference", "driver", "address"), [
