@@ -22,5 +22,6 @@ def test_installer_never_starts_observer():
     text = INSTALLER.read_text()
     assert "systemctl --user enable --now gway-app-observer" not in text
     assert "systemctl --user start gway-app-observer" not in text
-    assert 'link="$unit_dir/.$observer_unit.$$"' in text
-    assert 'cp "$source_dir/scripts/deploy/systemd/user/$observer_unit"' in text
+    assert 'link="$unit_dir/.$observer_unit.$"' in text
+    assert 'ln -s "$current/scripts/deploy/systemd/user/$observer_unit" "$link"' in text
+    assert 'mv -Tf "$link" "$unit_dir/$observer_unit"' in text
