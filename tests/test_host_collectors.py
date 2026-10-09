@@ -34,13 +34,48 @@ def test_journal_cursor_resume(tmp_path):
     calls = []
     def collect(*, cursor, units, limit):
         calls.append(cursor)
-        if cursor:
-            return []
-        return [(Event.now("journald", "charger.service", "message"), "c1")]
+        if cursor is None:
+            return [(Event.now("journald", "charger.service", "message"), "c1")]
+        if cursor == "c1":
+            return [(Event.now("journald", "charger.service", "message"), "c2")]
+        return []
+    assert poll_journal(store, ["charger.service"], collect=collect) == []
     assert len(poll_journal(store, ["charger.service"], collect=collect)) == 1
     store.save()
     assert poll_journal(CheckpointStore(store.path), ["charger.service"], collect=collect) == []
-    assert calls == [None, "c1"]
+    assert calls == [None, "c1", "c2"]
+
+
+def test_journal_delivery_failure_does_not_advance_cursor(tmp_path):
+    store = CheckpointStore(tmp_path / "state.json")
+    store.set_cursor("journald:a.service", "c1")
+    store.save()
+    def collect(*, cursor, units, limit):
+        if cursor == "c1":
+            return [(Event.now("journald", "a.service", "message"), "c2")]
+        return []
+    def fail(event):
+        raise RuntimeError("output unavailable")
+    import pytest
+    with pytest.raises(RuntimeError, match="output unavailable"):
+        poll_journal(store, ["a.service"], collect=collect, deliver=fail)
+    assert CheckpointStore(store.path).cursor("journald:a.service") == "c1"
+    received = []
+    assert len(poll_journal(store, ["a.service"], collect=collect, deliver=received.append)) == 1
+    assert CheckpointStore(store.path).cursor("journald:a.service") == "c2"
+
+
+def test_one_broken_unit_does_not_block_other_units(tmp_path):
+    store = CheckpointStore(tmp_path / "state.json")
+    errors = []
+    def collect(units):
+        if units == ["broken.service"]:
+            raise OSError("unavailable")
+        return [Event.now("systemd", "good.service", "active")]
+    assert poll_systemd(store, ["broken.service", "good.service"], collect=collect,
+                        on_error=lambda unit, error: errors.append(unit)) == []
+    assert errors == ["broken.service"]
+    assert store._data["subjects"]["systemd:good.service"] == "active"
 
 
 def test_journal_parsing_and_invalid_records():
