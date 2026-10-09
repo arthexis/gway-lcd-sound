@@ -28,6 +28,7 @@ commands=(
   lcd-actions-runner-status:lcd-actions-runner-status
   gway-event-sound-monitor:gway_event_sound_monitor.py
   codex-sound-hook:codex-sound-hook
+  gway-app-observer:gway_app_observer.py
 )
 resolve_current() {
   [[ -L "$current" && -d "$current/scripts/gway" ]]
@@ -43,12 +44,14 @@ verify() {
   "$bin_dir/lcd-lockfile-runner" --help >/dev/null
   "$bin_dir/lcd-system-info-publisher" --help >/dev/null
   "$bin_dir/gway-event-sound-monitor" --help >/dev/null
+  "$bin_dir/gway-app-observer" --help >/dev/null
   PYTHONDONTWRITEBYTECODE=1 python3 - "$current/scripts/gway" <<'PY'
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))
 import lcd_engine.hardware.discovery
 import lcd_engine.system_info.collectors
 import sound_engine.events
+import event_engine.app_observer
 PY
   echo "LCD Sound installation verified: $(readlink -f "$current")"
 }
