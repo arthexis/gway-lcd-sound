@@ -7,8 +7,8 @@ COLUMNS = 16
 
 def clean_line(text: object, *, limit: int = 64) -> str:
     value = "" if text is None else str(text)
-    value = value.replace("\\r\\n", "\\n").replace("\\r", "\\n")
-    value = re.sub(r"[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", " ", value)
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    value = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ", value)
     value = "".join(ch if 32 <= ord(ch) < 127 else " " for ch in value)
     return value[:limit]
 
