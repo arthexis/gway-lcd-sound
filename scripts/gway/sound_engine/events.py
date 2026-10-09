@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from .config import THERMAL_REPEAT_SECONDS, UNDERVOLTAGE_REPEAT_SECONDS
 from .playback import play
+from .policy import thermal_due, voltage_due
 def added_removed(before: dict[str, Any], after: dict[str, Any], key: str) -> tuple[set[str], set[str]]:
     before_keys = set((before.get(key) or {}).keys())
     after_keys = set((after.get(key) or {}).keys())
@@ -157,7 +158,6 @@ def handle_upgrade(previous: dict[str, Any], current: dict[str, Any], runtime: d
 def handle_thermal(previous: dict[str, Any], current: dict[str, Any], runtime: dict[str, Any], *, dry_run: bool) -> None:
     thermal = current.get("thermal") or {}
     level = thermal.get("level", "unknown")
-    severity = {"unknown": 0, "normal": 0, "warm": 1, "hot": 2, "critical": 3}
     if level in {"normal", "unknown"}:
         runtime["last_thermal_level"] = level
         return
@@ -166,10 +166,7 @@ def handle_thermal(previous: dict[str, Any], current: dict[str, Any], runtime: d
     last_played_level = runtime.get("last_thermal_played_level", "normal")
     last_at = float(runtime.get("last_thermal_at", 0.0))
     should_play = False
-    if severity.get(level, 0) > severity.get(last_played_level, 0):
-        should_play = True
-    elif now - last_at >= THERMAL_REPEAT_SECONDS:
-        should_play = True
+    should_play = thermal_due(level, last_played_level, now, last_at, THERMAL_REPEAT_SECONDS)
 
     if should_play:
         sound = f"thermal-{level}"
@@ -191,7 +188,7 @@ def handle_undervoltage(previous: dict[str, Any], current: dict[str, Any], runti
         runtime["last_undervoltage_active"] = False
         return
 
-    if not last_active or now - last_at >= UNDERVOLTAGE_REPEAT_SECONDS:
+    if voltage_due(active, last_active, now, last_at, UNDERVOLTAGE_REPEAT_SECONDS):
         detail = str(state.get("raw") or "undervoltage")
         play("undervoltage", "undervoltage", detail, dry_run=dry_run)
         runtime["last_undervoltage_at"] = now
