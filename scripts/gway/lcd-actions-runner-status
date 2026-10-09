@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# A bounded lockfile consumed by lcd-lockfile-runner; no direct I2C writes.
+set -euo pipefail
+action="${1:-}"
+lock_dir="${GWAY_LCD_LOCK_DIR:-$HOME/.local/state/lcd-lockfiles}"
+lock="$lock_dir/lcd-actions-runner"
+case "$action" in
+  start)
+    pr="${2:-}"
+    branch="${3:-}"
+    [[ "$pr" =~ ^[0-9]+$ ]] || { echo "PR must be numeric" >&2; exit 2; }
+    [[ -n "$branch" ]] || { echo "branch is required" >&2; exit 2; }
+    mkdir -p "$lock_dir"
+    tmp="$(mktemp "$lock_dir/.lcd-actions-runner.XXXXXX")"
+    trap 'rm -f "$tmp"' EXIT
+    # Expire if the runner is killed before its final cleanup step.
+    expiry="$(date -u -d '+3 hours' +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'Run PR #%s\n%s\n%s\n' "$pr" "${branch//$'\n'/ }" "$expiry" > "$tmp"
+    mv -f "$tmp" "$lock"
+    ;;
+  stop)
+    rm -f "$lock"
+    ;;
+  *)
+    echo "Usage: $0 start PR_NUMBER BRANCH | stop" >&2
+    exit 2
+    ;;
+esac
+# Wake the runner promptly when transitioning to or from a job.
+if [[ -r "$lock_dir/lcd.pid" ]]; then
+  read -r pid < "$lock_dir/lcd.pid" || true
+  if [[ "${pid:-}" =~ ^[0-9]+$ ]]; then
+    kill -USR1 "$pid" 2>/dev/null || true
+  fi
+fi

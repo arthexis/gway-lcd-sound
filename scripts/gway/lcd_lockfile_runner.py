@@ -54,6 +54,7 @@ CHANNEL_FILES = {
 KNOWN_CHANNELS = frozenset((*CHANNEL_FILES, "script"))
 EVENT_PREFIX = "lcd-event-"
 EVENT_GLOB = "lcd-event-*.lck"
+RUNNER_LOCK = "lcd-actions-runner"
 CHANNEL_ORDER_FILE = "lcd-channels.lck"
 ROTATION_SCRIPT_FILE = "lcd-rotation.script"
 TIMINGS_FILE = "lcd-timings"
@@ -243,6 +244,15 @@ def parse_event_lock(path: Path, *, now: datetime) -> EventPayload | None:
         message_lines = ["", ""]
     lines = tuple(clean_line(line) for line in message_lines)
     return EventPayload(lines=lines, expires_at=expires_at, source=path)
+
+
+def active_runner_payload(lock_dirs: Iterable[Path], *, now: datetime) -> Payload | None:
+    """Persistent high-priority frame, expiring after abrupt job termination."""
+    for lock_dir in lock_dirs:
+        payload = read_channel_payload(lock_dir / RUNNER_LOCK, "actions-runner", now=now)
+        if payload and payload.has_text and payload.expires_at is not None:
+            return payload
+    return None
 
 
 def load_next_event(lock_dirs: Iterable[Path], *, now: datetime) -> EventPayload | None:
@@ -819,8 +829,9 @@ class Runner:
         now = now_utc()
         self.load_channels(now)
         self.configure_order()
-        event = self.active_event(now)
-        payload = self.event_payload(event) if event else self.current_payload(now)
+        runner = active_runner_payload(self.lock_dirs, now=now)
+        event = self.active_event(now) if runner is None else None
+        payload = runner or (self.event_payload(event) if event else self.current_payload(now))
         line1, line2 = self.frame_for_payload(payload, 0)
         if self.args.dry_run:
             print(f"{payload.label}: {line1!r} / {line2!r}")
@@ -837,8 +848,12 @@ class Runner:
                 now = now_utc()
                 self.load_channels(now)
                 self.configure_order()
-                event = self.active_event(now)
-                if event:
+                runner = active_runner_payload(self.lock_dirs, now=now)
+                event = self.active_event(now) if runner is None else None
+                if runner:
+                    payload = runner
+                    duration = self.args.poll_seconds
+                elif event:
                     payload = self.event_payload(event)
                     duration = min(self.args.event_seconds, max(1.0, (event.expires_at - now).total_seconds()))
                 else:
@@ -851,7 +866,7 @@ class Runner:
                     self.write_frame(line1, line2, payload.label)
                     step += 1
                     time.sleep(self.args.poll_seconds)
-                    if EVENT_INTERRUPT:
+                    if EVENT_INTERRUPT or active_runner_payload(self.lock_dirs, now=now_utc()) != runner:
                         break
                 if not event and self.order:
                     self.order_index = (self.order_index + 1) % len(self.order)

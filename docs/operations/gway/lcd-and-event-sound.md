@@ -190,3 +190,36 @@ udevadm test-builtin net_id /sys/class/net/<usb-wlan-iface>
   I2C detection and runner logs.
 - Do not run live sound playback in shared/noisy environments; use `--dry-run`
   when validating command shape only.
+
+## GitHub Actions runner PR display
+
+The standalone `lcd-lockfile-runner` reserves a high-priority LCD frame when
+`$HOME/.local/state/lcd-lockfiles/lcd-actions-runner` exists with three lines:
+the top row, bottom row, and UTC expiration timestamp. It bypasses rotating
+status/event frames for the duration of the job, while retaining the existing
+LCD driver and recovery behavior. Expired locks are discarded automatically.
+
+Install the publisher and the revised runner on Gway-001 from this repository:
+
+```bash
+install -m 0755 scripts/gway/lcd_lockfile_runner.py "$HOME/.local/bin/lcd-lockfile-runner"
+install -m 0755 scripts/gway/lcd-actions-runner-status "$HOME/.local/bin/lcd-actions-runner-status"
+systemctl --user restart lcd-lockfile.service
+```
+
+A trusted PR job in `arthexis/ocpp-csms` with the `simulator` label invokes:
+
+```bash
+lcd-actions-runner-status start 142 ci/trusted-pr-ocpp-simulator-e2e
+# On job completion (including failure):
+lcd-actions-runner-status stop
+```
+
+The first LCD line becomes `Run PR #142`; the bottom shows the head branch
+name, scrolling if longer than the 16-column display. While the job is running,
+this message overrides the normal LCD rotation. It is removed in an always-run
+workflow cleanup step, with a 3-hour expiry as a crash/cancellation fallback.
+
+LCD updates are best-effort and do not alter CI success/failure. No physical LCD
+writes occur from the GitHub Actions workflow itself; only the installed
+host-local LCD runner owns the hardware.
