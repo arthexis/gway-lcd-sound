@@ -34,7 +34,7 @@ def codex_processes(*, proc: Path = Path("/proc")) -> list[Event]:
         if not item.name.isdigit():
             continue
         try:
-            cmdline = (item / "cmdline").read_bytes().split(b"\\0")
+            cmdline = (item / "cmdline").read_bytes().split(bytes([0]))
             args = [arg.decode("utf-8", errors="replace") for arg in cmdline if arg]
             executable = Path(args[0]).name if args else ""
             if executable not in ("codex", "codex.exe"):
