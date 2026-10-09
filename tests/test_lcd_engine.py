@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from lcd_engine.model import Payload
-from lcd_engine.rendering import clean_line, scroll_segment
-from lcd_engine.scheduler import Scheduler
+from scripts.gway.lcd_engine.model import Payload
+from scripts.gway.lcd_engine.rendering import clean_line, scroll_segment
+from scripts.gway.lcd_engine.scheduler import Scheduler
 
 
 def test_renderer_matches_existing_character_contract():
