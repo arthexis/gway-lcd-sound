@@ -187,6 +187,22 @@ udevadm test-builtin net_id /sys/class/net/<usb-wlan-iface>
 - Do not run live sound playback in shared/noisy environments; use `--dry-run`
   when validating command shape only.
 
+## GitHub Actions runner lifecycle sounds
+
+The optional `config/systemd/gway/actions-runner/20-gway-sound.conf`
+drop-in applies to a **generated GitHub Actions runner system service**,
+not to every OCPP-CSMS job or satellite. It plays `notice` when the
+listener starts and `warning` when it stops, using the shared installed
+`codex-sound-hook`. A zero lock wait and two-second timeout make GPIO
+sounds nonblocking; the systemd `-` command prefix makes them nonfatal.
+
+After installing LCD Sound via `scripts/deploy/install.sh`, place this
+drop-in in the selected `actions.runner.*.service.d/` directory and run
+`sudo systemctl daemon-reload` followed by a deliberate runner restart.
+The drop-in is **not installed automatically** by the LCD Sound installer.
+PR job completion sounds remain the responsibility of the trusted
+OCPP-CSMS self-hosted workflow.
+
 ## GitHub Actions runner PR display
 
 The standalone `lcd-lockfile-runner` reserves a high-priority LCD frame when
