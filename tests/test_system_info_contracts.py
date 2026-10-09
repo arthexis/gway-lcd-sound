@@ -1,7 +1,5 @@
 from __future__ import annotations
-from dataclasses import replace
 import json
-from pathlib import Path
 
 from scripts.gway.lcd_engine.system_info import formatting, publishing, collectors
 from scripts.gway.lcd_engine.system_info.model import Snapshot
@@ -31,8 +29,6 @@ def test_conditional_frames_preserve_existing_order():
     frames = formatting.build_frames(sample(throttle="thr 0x1", failed_count=2,
                                             err_count=3, warn_count=4))
     assert [f.key for f in frames] == [
-        "host", "net", "wifi", "health", "disk", "power", "services", "devices", "logs"
-    ] or [f.key for f in frames] == [
         "host", "net", "wifi", "health", "disk", "power", "services", "devices", "logs"
     ]
 
