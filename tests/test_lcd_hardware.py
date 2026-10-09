@@ -94,3 +94,16 @@ def test_device_discovery_can_initialize_without_hardware(monkeypatch, tmp_path)
     assert any(op[:3] == ("data", 0x3E, 0x40) for op in bus.operations)
     bus.close()
     assert bus.closed
+
+
+@pytest.mark.parametrize("driver", ["aip31068", "pcf8574"])
+def test_device_close_releases_bus(monkeypatch, driver):
+    monkeypatch.setattr("scripts.gway.lcd_engine.hardware.aip31068.time.sleep", lambda _: None)
+    monkeypatch.setattr("scripts.gway.lcd_engine.hardware.pcf8574.time.sleep", lambda _: None)
+    bus = FakeBus()
+    if driver == "aip31068":
+        lcd = AiP31068LCD(bus=bus)
+    else:
+        lcd = PCF8574LCD(bus=bus, address=0x27, timings=LCDTimings())
+    lcd.close()
+    assert bus.closed
