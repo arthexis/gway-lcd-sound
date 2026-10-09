@@ -86,7 +86,7 @@ case "$action" in
       trap 'rm -rf "$staging"' EXIT
       mkdir -p "$staging/scripts"
       cp -a "$source_dir/scripts/gway" "$staging/scripts/gway"
-      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status"
+      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py"
       PYTHONDONTWRITEBYTECODE=1 python3 - "$staging/scripts/gway" <<'PY'
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))
