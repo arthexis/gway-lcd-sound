@@ -31,3 +31,19 @@ python3 -m py_compile scripts/gway/*.py
 Do not commit state from `/home/arthe/.local/state`, `/run`, recordings,
 generated summaries, or local service drop-ins containing machine-specific
 values.
+
+## Behavioral baseline (refactor chunk 1)
+
+The hardware-free contract suite exercises LCD formatting, rotation/event and
+Actions runner lockfile priority, expiration, sound aliases, mute/disable,
+playback errors, concurrent playback locking, and fake-display output.
+
+```bash
+python3 -m pip install pytest
+python3 -m pytest -q tests
+```
+
+A GitHub-hosted `Behavior contracts` workflow runs this suite on PRs and
+main pushes. It requires no I²C, GPIO, audio equipment or self-hosted runner.
+Chunk 1 preserves all production scripts; later refactors should extend the
+contracts before moving implementation code.

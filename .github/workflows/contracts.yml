@@ -1,0 +1,29 @@
+name: Behavior contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: LCD and sound contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test runner
+        run: python3 -m pip install pytest
+      - name: Validate Python helper syntax
+        run: python3 -m compileall -q scripts/gway
+      - name: Validate shell helper syntax
+        run: |
+          set -e
+          for script in scripts/gway/codex-sound-hook scripts/gway/lcd-actions-runner-status scripts/gway/gway-event-sound-hotplug scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh scripts/gway/radio-play; do
+            bash -n "$script"
+          done
+      - name: Run hardware-free contracts
+        run: python3 -m pytest -q tests
