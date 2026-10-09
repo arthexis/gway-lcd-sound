@@ -1,0 +1,19 @@
+# Autonomous read-only observer; installation and enablement are separate.
+# Installed as a systemd *user* unit in chunk 5D.2.
+[Unit]
+Description=GWAY LCD Sound application observer (shadow mode)
+Documentation=https://github.com/arthexis/gway-lcd-sound
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/gway-app-observer --notification-mode shadow --no-processes
+Restart=on-failure
+RestartSec=5s
+WorkingDirectory=%h
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
