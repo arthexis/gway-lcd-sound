@@ -20,6 +20,21 @@ surface belongs to GWAY.
 - `tests/`: focused unit tests that do not require the physical LCD or audio
   hardware.
 
+## Install and verify
+
+Run from the repository root as the GWAY service user:
+
+```bash
+bash scripts/deploy/install.sh install
+bash scripts/deploy/install.sh verify
+# Restore the previous release, if needed:
+bash scripts/deploy/install.sh rollback
+```
+
+The installer stages a versioned release under `~/.local/share/gway-lcd-sound/releases/`, atomically switches `current`, installs stable command links in `~/.local/bin`, and verifies installed entry points and Python imports. It restarts the user LCD lockfile service when available. Use `--no-restart` for CI or isolated tests. System-level units, udev rules, `/usr/local` helpers and their required permissions remain separate administrative setup steps documented under `docs/operations/gway/`.
+
+OCPP-CSMS trusted self-hosted simulator CI uses this same installer and validates the installed LCD runner, status publisher, and sound monitor; passing this check does not substitute for a physical I²C/audio field test.
+
 ## Validation
 
 ```bash

@@ -22,7 +22,7 @@ jobs:
       - name: Validate shell helper syntax
         run: |
           set -e
-          for script in scripts/gway/codex-sound-hook scripts/gway/lcd-actions-runner-status scripts/gway/gway-event-sound-hotplug scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh scripts/gway/radio-play; do
+          for script in scripts/gway/codex-sound-hook scripts/gway/lcd-actions-runner-status scripts/gway/gway-event-sound-hotplug scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh scripts/gway/radio-play scripts/deploy/install.sh; do
             bash -n "$script"
           done
       - name: Lint high-signal errors in test harness
