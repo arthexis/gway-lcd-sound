@@ -16,7 +16,7 @@ def test_fake_lcd_records_exact_padded_rows(tmp_path, monkeypatch, lcd_module, f
     runner.lcd = fake_lcd
     runner.write_frame("Run PR #142", "feature/very-long-branch", "actions-runner")
     assert fake_lcd.frames == [
-        ("Run PR #142".ljust(16), "feature/very-long")
+        ("Run PR #142".ljust(16), "feature/very-long-branch"[:16])
     ]
     assert (tmp_path / "lcd-screen.txt").read_text().splitlines() == [
         "Run PR #142".ljust(16), "feature/very-long"
