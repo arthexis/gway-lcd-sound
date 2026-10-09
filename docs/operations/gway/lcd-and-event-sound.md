@@ -66,6 +66,8 @@ install -d -m 0755 "$HOME/.local/bin/lcd_engine/hardware"
 install -m 0644 scripts/gway/lcd_engine/hardware/*.py "$HOME/.local/bin/lcd_engine/hardware/"
 install -m 0755 scripts/gway/lcd_system_info_publisher.py \
   "$HOME/.local/bin/lcd-system-info-publisher"
+install -d -m 0755 "$HOME/.local/bin/lcd_engine/system_info"
+install -m 0644 scripts/gway/lcd_engine/system_info/*.py "$HOME/.local/bin/lcd_engine/system_info/"
 install -m 0755 scripts/gway/gway_eth0_node_lcd_monitor.py \
   "$HOME/.local/bin/gway-eth0-node-lcd-monitor"
 sudo install -m 0755 scripts/gway/arthexis_dense_lcd_summary.py \
