@@ -10,6 +10,8 @@ from pathlib import Path
 
 from event_engine.app_observer import poll_csms, poll_codex, poll_codex_sessions
 from event_engine.state import CheckpointStore
+from event_engine.notification_rules import evaluate
+from event_engine.notification_outputs import deliver_shadow
 
 _STOP = False
 
@@ -24,6 +26,7 @@ def main(argv=None):
     parser.add_argument("--csms-data", type=Path, default=None)
     parser.add_argument("--no-processes", action="store_true")
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--shadow", action="store_true", help="emit notification plans without LCD or sound output")
     parser.add_argument("--poll-seconds", type=float, default=4.0)
     args = parser.parse_args(argv)
     if args.poll_seconds < 1:
@@ -33,6 +36,10 @@ def main(argv=None):
     store = CheckpointStore(args.state)
     def emit(event):
         print(json.dumps(event.to_dict(), sort_keys=True), flush=True)
+        if args.shadow:
+            notification = evaluate(event)
+            if notification is not None:
+                deliver_shadow(notification)
     while not _STOP:
         # Source failures are isolated; one broken source cannot stop others.
         sources = [("sessions", lambda: poll_codex_sessions(store, args.codex_sessions, deliver=emit))]
