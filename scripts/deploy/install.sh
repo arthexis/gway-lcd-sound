@@ -62,6 +62,8 @@ import lcd_engine.hardware.discovery
 import lcd_engine.system_info.collectors
 import sound_engine.events
 import event_engine.app_observer
+import event_engine.observer_lock
+import event_engine.notification_journal
 PY
   echo "LCD Sound installation verified: $(readlink -f "$current")"
 }
@@ -89,6 +91,9 @@ activate() {
     fi
   elif [[ -L "$unit_dir/$observer_unit" && "$(readlink "$unit_dir/$observer_unit")" == "$current/scripts/deploy/systemd/user/$observer_unit" ]]; then
     rm "$unit_dir/$observer_unit"
+    if command -v systemctl >/dev/null; then
+      systemctl --user daemon-reload || echo "Warning: user daemon-reload unavailable" >&2
+    fi
   fi
 }
 maybe_restart() {
