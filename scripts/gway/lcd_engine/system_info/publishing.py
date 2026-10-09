@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from .model import Frame
-from .collectors import clean
+from .collectors import clean, quote_frame_line
 ROTATION_SCRIPT_NAME = "lcd-rotation.script"
 CHANNELS_NAME = "lcd-channels.lck"
 STATUS_NAME = "lcd-system-info.json"
