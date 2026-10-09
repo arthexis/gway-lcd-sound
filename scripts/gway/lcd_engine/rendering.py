@@ -1,9 +1,8 @@
-"""Deterministic LCD sanitization and 16-column window selection."""
+"""Pure LCD text normalization and display window selection."""
 from __future__ import annotations
 import re
 
 COLUMNS = 16
-
 
 def clean_line(text: object, *, limit: int = 64) -> str:
     value = "" if text is None else str(text)
@@ -13,15 +12,12 @@ def clean_line(text: object, *, limit: int = 64) -> str:
     return value[:limit]
 
 
-def scroll_segment(text: str, step: int, *, columns: int = COLUMNS) -> str:
-    cleaned = clean_line(text)
-    if len(cleaned) <= columns:
-        return cleaned.ljust(columns)
-    padded = f"{cleaned}   "
-    span = max(len(padded) - columns + 1, 1)
+def scroll_segment(text: str, step: int) -> str:
+    clean = clean_line(text)
+    if len(clean) <= COLUMNS:
+        return clean.ljust(COLUMNS)
+    padded = f"{clean}   "
+    span = max(len(padded) - COLUMNS + 1, 1)
     index = step % span
-    return padded[index : index + columns].ljust(columns)
+    return padded[index : index + COLUMNS].ljust(COLUMNS)
 
-
-def frame_for_payload(payload, step: int, *, columns: int = COLUMNS) -> tuple[str, str]:
-    return scroll_segment(payload.line1, step, columns=columns), scroll_segment(payload.line2, step, columns=columns)
