@@ -1,9 +1,7 @@
 """Independent read-only observers for CSMS evidence and Codex processes."""
 from __future__ import annotations
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
-from collections.abc import Callable
 from .model import Event
 
 def csms_events(data_dir: Path, *, after: int = 0, limit: int = 100) -> list[tuple[Event, int]]:
@@ -23,8 +21,9 @@ def csms_events(data_dir: Path, *, after: int = 0, limit: int = 100) -> list[tup
         connection.close()
     result = []
     for identifier, received, charger, action, direction, txn in rows:
+        category = classify_ocpp(str(action), str(direction))
         result.append((Event("ocpp", str(charger), str(action), str(received),
-                             {"direction": direction, "transaction_id": txn},
+                             {"direction": direction, "transaction_id": txn, "category": category},
                              event_id=f"ocpp:{identifier}"), identifier))
     return result
 
@@ -46,3 +45,14 @@ def codex_processes(*, proc: Path = Path("/proc")) -> list[Event]:
         except (OSError, IndexError, ValueError):
             continue
     return observed
+
+
+def classify_ocpp(action: str, direction: str) -> str:
+    """Conservative categories: protocol actions alone are not failures."""
+    if direction != "in":
+        return "outbound"
+    if action in {"StartTransaction", "StopTransaction"}:
+        return "transaction"
+    if action in {"BootNotification", "Heartbeat", "StatusNotification"}:
+        return "status"
+    return "activity"
