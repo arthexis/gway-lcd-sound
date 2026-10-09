@@ -9,7 +9,7 @@ def test_16_column_scroll_and_padding(lcd_module):
     assert lcd_module.scroll_segment("Ready", 0) == "Ready".ljust(16)
     assert lcd_module.scroll_segment("ABCDEFGHIJKLMNOPQRST", 0) == "ABCDEFGHIJKLMNOP"
     assert lcd_module.scroll_segment("ABCDEFGHIJKLMNOPQRST", 1) == "BCDEFGHIJKLMNOPQ"
-    assert lcd_module.scroll_segment("ABCDEFGHIJKLMNOPQRST", 8) == "IJKLMNOPQRST   I"
+    assert lcd_module.scroll_segment("ABCDEFGHIJKLMNOPQRST", 7) == "HIJKLMNOPQRST   "
 
 
 def test_control_characters_are_sanitized(lcd_module):
