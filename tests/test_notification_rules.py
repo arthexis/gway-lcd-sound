@@ -26,7 +26,7 @@ def test_process_presence_never_proves_task_outcome(state):
     assert evaluate(event("codex", state)) is None
 
 
-@pytest.mark.parametrize("state", ["unknown", "heartbeat", ""])
+@pytest.mark.parametrize("state", ["unknown", "heartbeat", "not-a-lifecycle"])
 def test_unrecognized_codex_lifecycle_is_silent(state):
     assert evaluate(event("codex-turn", state)) is None
 
