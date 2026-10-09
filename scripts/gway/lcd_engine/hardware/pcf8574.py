@@ -111,6 +111,9 @@ class PCF8574LCD:
         self.command(0x01)
         time.sleep(self.timings.clear_delay)
 
+    def close(self) -> None:
+        self.bus.close()
+
     def write_frame(self, line1: str, line2: str) -> None:
         self._write_row(0, line1)
         self._write_row(1, line2)
