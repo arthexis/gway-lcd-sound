@@ -37,7 +37,7 @@ def journal_entries(*, cursor: str | None, units: Iterable[str], run: Run = _run
     """
     if limit < 1:
         raise ValueError("limit must be positive")
-    argv = ["journalctl", "--no-pager", "--output=json", "--reverse=no"]
+    argv = ["journalctl", "--no-pager", "--output=json"]
     if cursor:
         argv.append("--after-cursor=" + cursor)
     else:
