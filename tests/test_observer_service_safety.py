@@ -13,7 +13,7 @@ def test_unit_is_unprivileged_shadow_only():
     assert "Restart=on-failure" in text
     assert "UMask=0077" in text
     assert "User=root" not in text
-    assert "--csms-data" not in text
+    assert "--csms-data %h/ocpp-csms-data" in text
     assert "ExecStartPre=" not in text
     assert "ExecStartPost=" not in text
 
