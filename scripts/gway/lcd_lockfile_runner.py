@@ -52,6 +52,7 @@ STATE_DIR = Path.home() / ".local" / "state" / "lcd-lockfile-runner"
 LOG_FILE = STATE_DIR / "lcd-lockfile-runner.log"
 WORK_FILE = STATE_DIR / "lcd-screen.txt"
 HISTORY_FILE = STATE_DIR / "lcd-history.ndjson"
+CURRENT_FRAME_FILE = STATE_DIR / "lcd-current.json"
 
 DEFAULT_ORDER = ("high", "low", "stats", "clock")
 
@@ -345,6 +346,15 @@ class Runner:
             return
         try:
             self.lcd.write_frame(row1, row2)
+            frame = {"ts": datetime.now(timezone.utc).isoformat(),
+                     "label": label, "line1": row1, "line2": row2}
+            current_path = WORK_FILE.with_name("lcd-current.json")
+            temp = current_path.with_suffix(f".{os.getpid()}.tmp")
+            try:
+                temp.write_text(json.dumps(frame, sort_keys=True) + "\n", encoding="utf-8")
+                os.replace(temp, current_path)
+            finally:
+                temp.unlink(missing_ok=True)
         except Exception as exc:
             log("lcd-write-failed", error=str(exc), label=label)
             try:
@@ -353,6 +363,26 @@ class Runner:
                 pass
             self.lcd = None
             self.bus = None
+
+    @staticmethod
+    def show_current(*, as_json: bool = False) -> int:
+        """Read the last successful hardware write; never touch the I2C bus."""
+        try:
+            frame = json.loads(CURRENT_FRAME_FILE.read_text(encoding="utf-8"))
+            if not isinstance(frame, dict) or not all(
+                isinstance(frame.get(k), str) for k in ("ts", "label", "line1", "line2")
+            ):
+                raise ValueError("invalid current frame")
+        except (OSError, ValueError) as exc:
+            print(f"No confirmed LCD frame: {exc}", file=sys.stderr)
+            return 1
+        if as_json:
+            print(json.dumps(frame, sort_keys=True))
+        else:
+            print(f"Last successful LCD write: {frame['ts']} [{frame['label']}]")
+            print(f"|{frame['line1']}|")
+            print(f"|{frame['line2']}|")
+        return 0
 
     def run_once(self) -> int:
         now = now_utc()
@@ -439,6 +469,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-hardware", action="store_true", help="Write only the fallback work/history files.")
     parser.add_argument("--stop-embedded", action="store_true", help="Stop embedded apps.screens.lcd_screen.runner processes owned by this user.")
     parser.add_argument("--once", action="store_true", help="Render one frame and exit.")
+    parser.add_argument("--show-current", action="store_true", help="Read last confirmed physical LCD frame without I2C access.")
+    parser.add_argument("--json", action="store_true", help="JSON output with --show-current.")
     parser.add_argument("--dry-run", action="store_true", help="Print selected frame instead of writing LCD/fallback output.")
     return parser
 
@@ -447,6 +479,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     args.lock_dir = parse_lock_dirs(args.lock_dir)
+    if args.show_current:
+        return Runner.show_current(as_json=args.json)
+    if args.json:
+        parser.error("--json requires --show-current")
     runner = Runner(args)
     if args.once:
         if not args.dry_run:
