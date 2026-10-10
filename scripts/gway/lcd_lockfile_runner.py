@@ -350,7 +350,7 @@ class Runner:
                      "label": label, "line1": row1, "line2": row2}
             temp = CURRENT_FRAME_FILE.with_suffix(f".{os.getpid()}.tmp")
             try:
-                temp.write_text(json.dumps(frame, sort_keys=True) + "\\n", encoding="utf-8")
+                temp.write_text(json.dumps(frame, sort_keys=True) + "\n", encoding="utf-8")
                 os.replace(temp, CURRENT_FRAME_FILE)
             finally:
                 temp.unlink(missing_ok=True)
