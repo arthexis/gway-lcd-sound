@@ -348,10 +348,11 @@ class Runner:
             self.lcd.write_frame(row1, row2)
             frame = {"ts": datetime.now(timezone.utc).isoformat(),
                      "label": label, "line1": row1, "line2": row2}
-            temp = CURRENT_FRAME_FILE.with_suffix(f".{os.getpid()}.tmp")
+            current_path = WORK_FILE.with_name("lcd-current.json")
+            temp = current_path.with_suffix(f".{os.getpid()}.tmp")
             try:
                 temp.write_text(json.dumps(frame, sort_keys=True) + "\n", encoding="utf-8")
-                os.replace(temp, CURRENT_FRAME_FILE)
+                os.replace(temp, current_path)
             finally:
                 temp.unlink(missing_ok=True)
         except Exception as exc:
