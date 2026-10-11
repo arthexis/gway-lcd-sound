@@ -29,7 +29,7 @@ def handle_stop(_signum: int, _frame: object) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Host-local GWAY event sound monitor.")
-    parser.add_argument("--poll-seconds", type=float, default=float(os.environ.get("GWAY_EVENT_SOUND_POLL_SECONDS", "4")))
+    parser.add_argument("--poll-seconds", type=float, default=float(os.environ.get("GWAY_EVENT_SOUND_POLL_SECONDS", "1")))
     parser.add_argument("--once", action="store_true", help="print one snapshot and exit")
     parser.add_argument("--json", action="store_true", help="emit JSON for --once")
     parser.add_argument("--dry-run", action="store_true", help="log/print sound decisions without playback")
@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         "last_thermal_level": initial_thermal_level,
         "last_thermal_played_level": initial_thermal_level,
         "last_thermal_at": time.monotonic(),
-        "last_undervoltage_active": bool((previous.get("undervoltage") or {}).get("active")),
+        "last_undervoltage_active": False,
         "last_undervoltage_at": 0.0,
     }
     save_state({"started_at": time.time(), "snapshot": previous})
