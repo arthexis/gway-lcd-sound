@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lcd_engine.model import Payload, EventPayload, ChannelState
 from lcd_engine.rendering import clean_line, scroll_segment
 from lcd_engine.scheduler import Scheduler
+from lcd_engine.undervoltage import Incident, read_active, display_time
 from lcd_engine.lockfiles import (
     CHANNEL_FILES, KNOWN_CHANNELS, EVENT_PREFIX, EVENT_GLOB, RUNNER_LOCK,
     CHANNEL_ORDER_FILE, ROTATION_SCRIPT_FILE, TIMINGS_FILE,
@@ -145,6 +146,7 @@ class Runner:
         self.lcd = None
         self.bus = None
         self.last_hardware_attempt = 0.0
+        self.undervoltage = Incident(STATE_DIR / 'undervoltage.json')
 
     def setup(self) -> None:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -384,13 +386,19 @@ class Runner:
             print(f"|{frame['line2']}|")
         return 0
 
+    def undervoltage_payload(self) -> Payload | None:
+        first_seen = self.undervoltage.update(read_active(), datetime.now().astimezone())
+        if first_seen is None:
+            return None
+        return Payload('UNDERVOLTAGE', display_time(first_seen), label='undervoltage')
+
     def run_once(self) -> int:
         now = now_utc()
         self.load_channels(now)
         self.configure_order()
         runner = active_runner_payload(self.lock_dirs, now=now)
         event = self.active_event(now) if runner is None else None
-        payload = runner or (self.event_payload(event) if event else self.current_payload(now))
+        payload = self.undervoltage_payload() or runner or (self.event_payload(event) if event else self.current_payload(now))
         line1, line2 = self.frame_for_payload(payload, 0)
         if self.args.dry_run:
             print(f"{payload.label}: {line1!r} / {line2!r}")
@@ -431,8 +439,10 @@ class Runner:
                     event=event_payload,
                     normal=normal_payload,
                 )
-                line1, line2 = self.frame_for_payload(choice.payload, choice.scroll_step)
-                self.write_frame(line1, line2, choice.payload.label)
+                warning = self.undervoltage_payload()
+                shown = warning or choice.payload
+                line1, line2 = self.frame_for_payload(shown, 0 if warning else choice.scroll_step)
+                self.write_frame(line1, line2, shown.label)
                 if choice.advance_normal:
                     if self.order:
                         self.order_index = (self.order_index + 1) % len(self.order)
