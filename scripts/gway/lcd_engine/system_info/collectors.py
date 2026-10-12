@@ -9,7 +9,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 DEFAULT_LOCK_DIR = Path.home() / ".local" / "state" / "lcd-lockfiles"
-DEFAULT_ARTHEXIS_LOCK_DIR = Path("/home/arthe/arthexis/.locks")
 DEFAULT_TODO_FILE = Path("/home/arthe/TODO.txt")
 DEFAULT_WORKGROUP_FILE = Path("/home/arthe/workgroup.txt")
 DEFAULT_PRX_ASSIGNMENTS = Path.home() / ".local" / "state" / "prx" / "assignments.json"
@@ -250,10 +249,7 @@ def i2c_addresses() -> list[str]:
 
 
 def rfid_state() -> str:
-    candidates: list[Path] = [
-        DEFAULT_ARTHEXIS_LOCK_DIR / "rfid-scan.json",
-        Path.home() / ".local" / "state" / "rfid-mode" / "rfid-scan.json",
-    ]
+    candidates: list[Path] = [Path.home() / ".local" / "state" / "rfid-mode" / "rfid-scan.json"]
     env_scan_file = os.environ.get("RFID_MODE_SCAN_FILE")
     if env_scan_file:
         candidates.insert(0, Path(env_scan_file))
@@ -320,7 +316,7 @@ from .model import Snapshot
 
 def collect_snapshot() -> Snapshot:
     hostname = socket.gethostname().split(".")[0]
-    role = read_first(DEFAULT_ARTHEXIS_LOCK_DIR / "role.lck") or "node"
+    role = "node"
     iface, ip_addr, reachable = primary_route()
     root_pct, root_free = disk_usage_label(Path("/"))
     home_pct, home_free = disk_usage_label(Path.home())
@@ -335,7 +331,6 @@ def collect_snapshot() -> Snapshot:
         failed_count=failed_systemd_count(), throttle=throttle_label(),
         services_ok=all((systemctl_active("ssh.service"),
                          systemctl_active("NetworkManager.service"),
-                         systemctl_active("lcd-arthexis.service"),
                          systemctl_active("lcd-lockfile.service", user=True))),
         wifi_line1=wifi_line1, wifi_line2=wifi_line2,
         uptime=uptime_seconds(), cpu_temp=cpu_temp_c(), usb_count=usb_count(),
