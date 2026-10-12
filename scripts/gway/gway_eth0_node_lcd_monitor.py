@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_IFACE = "eth0"
-DEFAULT_LOCK_FILE = Path("/home/arthe/arthexis/.locks/lcd-low-3")
+DEFAULT_LOCK_FILE = Path.home() / ".local" / "state" / "lcd-lockfiles" / "lcd-low-3"
 DEFAULT_STATE_FILE = Path("/home/arthe/.local/state/gway-eth0-node-lcd/state.json")
 DEFAULT_INTERVAL = 15
 LCD_WIDTH = 16
@@ -323,7 +323,7 @@ def fetch_node_info(ip: str) -> dict[str, Any]:
                 return {"detected": True, "role": role.strip(), "url": url, "status": status}
             if {"public_key", "hostname", "token_signature"} & set(data.keys()):
                 return {"detected": True, "role": "ARTHEX", "url": url, "status": status}
-        if "arthexis" in text.lower():
+        if "gway" in text.lower():
             return {"detected": True, "role": "ARTHEX", "url": url, "status": status}
     return {"detected": False, "role": "NONODE"}
 
@@ -393,9 +393,9 @@ def collect(iface: str, lock_file: Path, state_file: Path, interval: int, allow_
     ttl = device.get("ttl")
     ssh = tcp_banner(ip, 22)
     ports = [port for port in (22, 80, 443, 8000, 8888) if tcp_open(ip, port)]
-    arthexis = fetch_node_info(ip)
+    gateway = fetch_node_info(ip)
     os_word = guess_os(mac, ssh, ttl)
-    role = str(arthexis.get("role") or "NONODE")
+    role = str(gateway.get("role") or "NONODE")
     line1 = ip[:LCD_WIDTH]
     line2 = fit_two_words(os_word, role)
     lock_ttl = max(interval * 8, 120)
@@ -410,7 +410,7 @@ def collect(iface: str, lock_file: Path, state_file: Path, interval: int, allow_
             "ttl": ttl,
             "ssh_banner": ssh,
             "open_ports": ports,
-            "arthexis": arthexis,
+            "gateway": gateway,
             "os": os_word,
             "role": role_word(role),
             "line1": line1,

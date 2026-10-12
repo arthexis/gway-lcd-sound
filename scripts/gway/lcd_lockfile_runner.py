@@ -45,10 +45,7 @@ from lcd_engine.hardware.discovery import i2c_scan, prepare_lcd
 
 COLUMNS = 16
 ROWS = 2
-DEFAULT_LOCK_DIRS = (
-    Path.home() / ".local" / "state" / "lcd-lockfiles",
-    Path("/home/arthe/arthexis/.locks"),
-)
+DEFAULT_LOCK_DIRS = (Path.home() / ".local" / "state" / "lcd-lockfiles",)
 STATE_DIR = Path.home() / ".local" / "state" / "lcd-lockfile-runner"
 LOG_FILE = STATE_DIR / "lcd-lockfile-runner.log"
 WORK_FILE = STATE_DIR / "lcd-screen.txt"

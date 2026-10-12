@@ -5,7 +5,7 @@ After=default.target
 [Service]
 Type=simple
 Environment=PYTHONUNBUFFERED=1
-Environment=LCD_LOCK_DIRS=/home/arthe/.local/state/lcd-lockfiles:/home/arthe/arthexis/.locks
+Environment=LCD_LOCK_DIRS=/home/arthe/.local/state/lcd-lockfiles
 ExecStart=/home/arthe/.local/bin/lcd-lockfile-runner --stop-embedded
 Restart=always
 RestartSec=3
