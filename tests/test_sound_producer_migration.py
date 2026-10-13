@@ -48,3 +48,16 @@ class ProducerMigrationTests(unittest.TestCase):
                 text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)["sound"], expected)
+
+    def test_actions_runner_dropin_is_direct_and_nonfatal(self):
+        conf = (ROOT / "config/systemd/gway/actions-runner/20-gway-sound.conf").read_text()
+        self.assertIn("ExecStartPost=-/usr/local/bin/sound --event started --source github-actions", conf)
+        self.assertIn("ExecStopPost=-/usr/local/bin/sound --event stopped --source github-actions", conf)
+        self.assertNotIn("codex-sound-hook", conf)
+        for event, expected in (("started", "notice"), ("stopped", "warning")):
+            result = subprocess.run(
+                ["bash", str(SOUND), "--event", event, "--source", "github-actions", "--resolve"],
+                env={**os.environ, "GWAY_SOUND_EVENT_DB": str(self.db)},
+                text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["sound"], expected)
