@@ -400,7 +400,35 @@ DEFAULT_EVENTS = (
     ("codex", "SubagentStop", "notice"),
     ("codex", "Stop", "ok"),
     ("wifi", "connected", "ok"),
+    ("gway-monitor", "ap-connect", "notice"),
+    ("gway-monitor", "ap-disconnect", "warning"),
+    ("gway-monitor", "wifi-connect", "ok"),
+    ("gway-monitor", "wifi-disconnect", "warning"),
+    ("gway-monitor", "eth0-connected", "ok"),
+    ("gway-monitor", "eth0-disconnected", "warning"),
+    ("gway-monitor", "hdmi-connected", "notice"),
+    ("gway-monitor", "hdmi-disconnected", "warning"),
+    ("gway-monitor", "camera-connect", "notice"),
+    ("gway-monitor", "camera-disconnect", "warning"),
+    ("gway-monitor", "bastion-insert", "ok"),
+    ("gway-monitor", "bastion-remove", "warning"),
+    ("gway-monitor", "bastion-result", "ok"),
+    ("gway-monitor", "kindle-connect", "notice"),
+    ("gway-monitor", "kindle-disconnect", "warning"),
+    ("gway-monitor", "usb-connect", "attention"),
+    ("gway-monitor", "usb-disconnect", "warning"),
+    ("gway-monitor", "lcd-important", "attention"),
+    ("gway-monitor", "feedback-lock", "attention"),
+    ("gway-monitor", "repo-upgrade-start", "busy"),
+    ("gway-monitor", "repo-upgrade-complete", "ok"),
+    ("gway-monitor", "repo-upgrade-failed", "error"),
+    ("gway-monitor", "thermal", "warning"),
+    ("gway-monitor", "undervoltage", "undervoltage"),
+    ("hotplug", "bastion-insert", "notice"),
+    ("hotplug", "bastion-remove", "warning"),
+    ("wifi", "connected", "ok"),
     ("wifi", "disconnected", "warning"),
+    ("hotplug", "unknown", "attention"),
 )
 
 
@@ -423,6 +451,7 @@ def event_database(path=DEFAULT_EVENT_DB):
     if created:
         connection.executemany("INSERT INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
     # Idempotent seed also applies to databases created by S1.
+    connection.executemany("INSERT OR IGNORE INTO events(source,event,sound) VALUES (?,?,?)", DEFAULT_EVENTS)
     connection.executemany(
         "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
         (
