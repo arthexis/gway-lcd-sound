@@ -122,3 +122,20 @@ return the static event mapping without affecting playback state.
 The original `sound NAME` interface remains intact. Existing direct
 sound callers are unaffected by motif context and will be migrated in
 S3 where appropriate.
+
+## S3 — Producer migration (first pass)
+
+The hotplug entry point and host event monitor now emit source/event
+notifications directly to `sound` without invoking `codex-sound-hook`.
+Existing legacy hook remains installed for external callers until the
+compatibility migration is complete. Hotplug uses
+`GWAY_SOUND_BIN` to override the default `/usr/local/bin/sound`.
+The monitor accepts `GWAY_EVENT_SOUND_SOUND_BIN` (with the older
+`GWAY_EVENT_SOUND_HOOK` as an override alias).
+
+The SQLite event database is seeded idempotently on first use with existing
+monitor sound-name aliases, preserving historic event distinctions while
+removing the playback wrapper. Changing a mapping no longer requires changing
+the producer. Codex lifecycle configuration and any remaining Actions-runner
+call sites still need their own audit and migration; this first pass does not
+modify the installed Codex runtime or remove its legacy hook.
