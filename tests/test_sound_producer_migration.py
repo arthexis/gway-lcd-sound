@@ -51,8 +51,8 @@ class ProducerMigrationTests(unittest.TestCase):
 
     def test_actions_runner_dropin_is_direct_and_nonfatal(self):
         conf = (ROOT / "config/systemd/gway/actions-runner/20-gway-sound.conf").read_text()
-        self.assertIn("ExecStartPost=-/usr/local/bin/sound --event started --source github-actions", conf)
-        self.assertIn("ExecStopPost=-/usr/local/bin/sound --event stopped --source github-actions", conf)
+        self.assertIn("ExecStartPost=-/usr/bin/timeout 2 /usr/local/bin/sound --event started --source github-actions", conf)
+        self.assertIn("ExecStopPost=-/usr/bin/timeout 2 /usr/local/bin/sound --event stopped --source github-actions", conf)
         self.assertNotIn("codex-sound-hook", conf)
         for event, expected in (("started", "notice"), ("stopped", "warning")):
             result = subprocess.run(
