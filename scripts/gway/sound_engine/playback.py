@@ -54,7 +54,7 @@ def play(event: str, sound: str, detail: str = "", *, dry_run: bool = False) -> 
         return
     env = os.environ.copy()
     subprocess.run(
-        [str(SOUND_HOOK), "--event", event, "--source", "gway-monitor", "--volume", VOLUME],
+        [str(SOUND_HOOK), "--event", requested_sound, "--source", "gway-monitor", "--volume", VOLUME],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
