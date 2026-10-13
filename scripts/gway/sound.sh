@@ -445,6 +445,8 @@ DEFAULT_EVENTS = (
     ("hotplug", "bastion-remove", "warning"),
     ("wifi", "disconnected", "warning"),
     ("hotplug", "unknown", "attention"),
+    ("github-actions", "started", "notice"),
+    ("github-actions", "stopped", "warning"),
 )
 
 
