@@ -12,8 +12,8 @@ sound-commands \- local GPIO sound and event notification tools
 .B gway-event-sound-monitor
 .RI [ options ]
 .SH DESCRIPTION
-The local sound tools play short GPIO earcons and gate whether event sounds are
-audible.
+The local sound tools play short GPIO earcons and resolve event-source mappings.
+Motifs identify a source before its event sound.
 .PP
 .B sound
 or
@@ -24,7 +24,7 @@ plays one named pattern directly.
 toggles the shared sound-hook silent file and shows recent logs.
 .PP
 .B gway-event-sound-monitor
-watches local host events and maps them to existing sound names.
+watches local host events and sends events directly to the sound engine.
 .SH SOUND NAMES
 The local vocabulary is:
 .TP
@@ -139,7 +139,7 @@ Run the event monitor once without playback:
 GPIO earcon player.
 .TP
 .I /home/arthe/.local/bin/codex-sound-hook
-Shared playback hook used by local agents and services.
+Deprecated compatibility wrapper for callers not yet migrated.
 .TP
 .I /home/arthe/.local/state/codex-sound-hooks/silent
 Presence of this file mutes hook playback.
@@ -149,3 +149,8 @@ Sound-hook event log.
 .SH SEE ALSO
 .BR lcd-commands (1),
 .BR rfid-commands (1)
+
+.SH EVENT PLAYBACK
+Use sound --event EVENT --source SOURCE for named events.
+Use sound --resolve --event EVENT --source SOURCE for a silent JSON lookup.
+Mappings are stored in the GWAY sound SQLite event database.
