@@ -50,12 +50,11 @@ def play(event: str, sound: str, detail: str = "", *, dry_run: bool = False) -> 
         print(f"sound {event} {sound} {detail}".rstrip(), flush=True)
         return
     if not SOUND_HOOK.exists():
-        log("play-skipped", reason="missing-sound-hook", event_name=event, sound=sound)
+        log("play-skipped", reason="missing-sound", event_name=event, sound=sound)
         return
     env = os.environ.copy()
-    env.setdefault("CODEX_SOUND_HOOK_VOLUME", VOLUME)
     subprocess.run(
-        [str(SOUND_HOOK), event, sound],
+        [str(SOUND_HOOK), "--event", requested_sound, "--source", "gway-monitor", "--volume", VOLUME],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

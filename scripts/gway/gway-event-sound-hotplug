@@ -2,21 +2,12 @@
 set -euo pipefail
 
 event="${1:-unknown}"
+sound_bin="${GWAY_SOUND_BIN:-/usr/local/bin/sound}"
 
 case "$event" in
-  bastion-add)
-    exec /home/arthe/.local/bin/codex-sound-hook bastion-insert notice
-    ;;
-  bastion-remove)
-    exec /home/arthe/.local/bin/codex-sound-hook bastion-remove warning
-    ;;
-  wifi-add)
-    exec /home/arthe/.local/bin/codex-sound-hook wifi-connect ok
-    ;;
-  wifi-remove)
-    exec /home/arthe/.local/bin/codex-sound-hook wifi-disconnect warning
-    ;;
-  *)
-    exec /home/arthe/.local/bin/codex-sound-hook hotplug attention
-    ;;
+  bastion-add) exec "$sound_bin" --event bastion-insert --source hotplug ;;
+  bastion-remove) exec "$sound_bin" --event bastion-remove --source hotplug ;;
+  wifi-add) exec "$sound_bin" --event connected --source wifi ;;
+  wifi-remove) exec "$sound_bin" --event disconnected --source wifi ;;
+  *) exec "$sound_bin" --event unknown --source hotplug ;;
 esac

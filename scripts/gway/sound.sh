@@ -400,7 +400,53 @@ DEFAULT_EVENTS = (
     ("codex", "SubagentStop", "notice"),
     ("codex", "Stop", "ok"),
     ("wifi", "connected", "ok"),
+    ("gway-monitor", "bastion-ready", "ok"),
+    ("gway-monitor", "bastion-failed", "error"),
+    ("gway-monitor", "eth-connect", "ok"),
+    ("gway-monitor", "eth-disconnect", "warning"),
+    ("gway-monitor", "hdmi-connect", "notice"),
+    ("gway-monitor", "hdmi-disconnect", "warning"),
+    ("gway-monitor", "camera-connect", "notice"),
+    ("gway-monitor", "camera-disconnect", "warning"),
+    ("gway-monitor", "kindle-connect", "notice"),
+    ("gway-monitor", "kindle-disconnect", "warning"),
+    ("gway-monitor", "usb-peripheral", "notice"),
+    ("gway-monitor", "usb-unknown", "attention"),
+    ("gway-monitor", "usb-remove", "warning"),
+    ("gway-monitor", "thermal-warm", "warning"),
+    ("gway-monitor", "thermal-hot", "error"),
+    ("gway-monitor", "thermal-critical", "critical"),
+    ("gway-monitor", "repo-upgrade-complete-unknown", "notice"),
+    ("gway-monitor", "ap-connect", "notice"),
+    ("gway-monitor", "ap-disconnect", "warning"),
+    ("gway-monitor", "wifi-connect", "ok"),
+    ("gway-monitor", "wifi-disconnect", "warning"),
+    ("gway-monitor", "eth0-connected", "ok"),
+    ("gway-monitor", "eth0-disconnected", "warning"),
+    ("gway-monitor", "hdmi-connected", "notice"),
+    ("gway-monitor", "hdmi-disconnected", "warning"),
+    ("gway-monitor", "camera-connect", "notice"),
+    ("gway-monitor", "camera-disconnect", "warning"),
+    ("gway-monitor", "bastion-insert", "ok"),
+    ("gway-monitor", "bastion-remove", "warning"),
+    ("gway-monitor", "bastion-result", "ok"),
+    ("gway-monitor", "kindle-connect", "notice"),
+    ("gway-monitor", "kindle-disconnect", "warning"),
+    ("gway-monitor", "usb-connect", "attention"),
+    ("gway-monitor", "usb-disconnect", "warning"),
+    ("gway-monitor", "lcd-important", "attention"),
+    ("gway-monitor", "feedback-lock", "attention"),
+    ("gway-monitor", "repo-upgrade-start", "busy"),
+    ("gway-monitor", "repo-upgrade-complete", "ok"),
+    ("gway-monitor", "repo-upgrade-failed", "error"),
+    ("gway-monitor", "thermal", "warning"),
+    ("gway-monitor", "undervoltage", "undervoltage"),
+    ("hotplug", "bastion-insert", "notice"),
+    ("hotplug", "bastion-remove", "warning"),
     ("wifi", "disconnected", "warning"),
+    ("hotplug", "unknown", "attention"),
+    ("github-actions", "started", "notice"),
+    ("github-actions", "stopped", "warning"),
 )
 
 
@@ -421,8 +467,9 @@ def event_database(path=DEFAULT_EVENT_DB):
     connection.execute("CREATE TABLE IF NOT EXISTS motifs (source TEXT PRIMARY KEY, notes TEXT NOT NULL, cooldown_seconds REAL NOT NULL DEFAULT 45)")
     connection.execute("CREATE TABLE IF NOT EXISTS motif_context (slot INTEGER PRIMARY KEY CHECK(slot=1), source TEXT NOT NULL, played_at REAL NOT NULL)")
     if created:
-        connection.executemany("INSERT INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
+        connection.executemany("INSERT OR IGNORE INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
     # Idempotent seed also applies to databases created by S1.
+    connection.executemany("INSERT OR IGNORE INTO events(source,event,sound) VALUES (?,?,?)", DEFAULT_EVENTS)
     connection.executemany(
         "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
         (
