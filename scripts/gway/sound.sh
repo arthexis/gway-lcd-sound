@@ -422,7 +422,15 @@ def event_database(path=DEFAULT_EVENT_DB):
     connection.execute("CREATE TABLE IF NOT EXISTS motif_context (slot INTEGER PRIMARY KEY CHECK(slot=1), source TEXT NOT NULL, played_at REAL NOT NULL)")
     if created:
         connection.executemany("INSERT INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
-        connection.commit()
+    # Idempotent seed also applies to databases created by S1.
+    connection.executemany(
+        "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
+        (
+            ("codex", json.dumps([[659, 0.07, 0.04], [988, 0.09, 0.0]]), 45),
+            ("wifi", json.dumps([[523, 0.06, 0.035], [784, 0.06, 0.0]]), 45),
+        ),
+    )
+    connection.commit()
     return connection
 
 
