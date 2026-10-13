@@ -11,6 +11,8 @@ trap cleanup_gpio EXIT
 
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
+import json
+import sqlite3
 import math
 import os
 import shutil
@@ -380,6 +382,74 @@ def play_pattern(name, *, pin, volume, backend, device, dry_run=False):
     log_backend(f"sound={name} backend=gpio pin={pin} cwd={os.getcwd()} ok")
 
 
+
+DEFAULT_EVENT_DB = os.environ.get(
+    "GWAY_SOUND_EVENT_DB",
+    os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                 "gway-sound", "events.sqlite3"),
+)
+# Source owns event names. The engine owns their audio mapping.
+DEFAULT_EVENTS = (
+    ("codex", "SessionStart", "notice"),
+    ("codex", "UserPromptSubmit", "busy"),
+    ("codex", "PermissionRequest", "attention"),
+    ("codex", "PreCompact", "warning"),
+    ("codex", "PostCompact", "notice"),
+    ("codex", "SubagentStart", "busy"),
+    ("codex", "SubagentStop", "notice"),
+    ("codex", "Stop", "ok"),
+    ("wifi", "connected", "ok"),
+    ("wifi", "disconnected", "warning"),
+)
+
+
+def event_database(path=DEFAULT_EVENT_DB):
+    """Open private SQLite mapping; seed only on first creation."""
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    if os.stat(directory).st_mode & 0o077:
+        raise PermissionError("sound event directory must be private")
+    if os.path.islink(path):
+        raise ValueError("sound event database must not be symlinked")
+    created = not os.path.exists(path)
+    connection = sqlite3.connect(path, timeout=5)
+    if created:
+        os.chmod(path, 0o600)
+    connection.execute("CREATE TABLE IF NOT EXISTS events (source TEXT NOT NULL, event TEXT NOT NULL, sound TEXT NOT NULL, PRIMARY KEY(source, event))")
+    connection.execute("CREATE TABLE IF NOT EXISTS aliases (source TEXT NOT NULL, alias TEXT NOT NULL, event TEXT NOT NULL, PRIMARY KEY(source, alias))")
+    if created:
+        connection.executemany("INSERT INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
+        connection.commit()
+    return connection
+
+
+def resolve_event(source, event, db):
+    """Explicit source mapping, then global mapping; aliases are source-scoped."""
+    source = (source or "").strip().lower()
+    event = event.strip()
+    if not event:
+        raise ValueError("event cannot be empty")
+    if not source:
+        source = "*"
+    # A per-source alias is looked up first. Global aliases are fallback.
+    for owner in (source, "*"):
+        row = db.execute("SELECT event FROM aliases WHERE source=? AND alias=?",
+                         (owner, event)).fetchone()
+        if row:
+            event = row[0]
+            break
+    for owner in (source, "*"):
+        row = db.execute("SELECT sound FROM events WHERE source=? AND event=?",
+                         (owner, event)).fetchone()
+        if row:
+            if row[0] not in PATTERNS:
+                raise ValueError("event maps to an unavailable sound")
+            return {"source": source, "event": event, "sound": row[0],
+                    "matched_source": owner}
+    return {"source": source, "event": event, "sound": None,
+            "matched_source": None}
+
+
 def list_sounds():
     for name in PATTERNS:
         print(f"{name:<9} {DESCRIPTIONS[name]}")
@@ -396,6 +466,10 @@ def build_parser():
         default="list",
         help="sound name, list, all, or test",
     )
+    parser.add_argument("--event", help="Producer-owned event name")
+    parser.add_argument("--source", help="Producer identity for event lookup")
+    parser.add_argument("--resolve", action="store_true", help="Print event resolution as JSON without playback")
+    parser.add_argument("--event-db", default=DEFAULT_EVENT_DB, help="SQLite event mapping path")
     parser.add_argument("--pin", type=int, default=DEFAULT_PIN, help="BCM GPIO pin, default 18")
     parser.add_argument("--volume", type=float, default=0.42, help="0.0-1.0, default 0.42")
     parser.add_argument("--pause", type=float, default=0.35, help="pause between sounds for all/test")
@@ -411,7 +485,25 @@ def main(argv):
     args.volume = clamp(args.volume, 0.0, 1.0)
     args.pause = clamp(args.pause, 0.0, 3.0)
     args.backend = (args.backend or "auto").strip().lower()
-    requested = args.sound.strip().lower().replace("_", "-")
+    if args.resolve and not args.event:
+        parser.error("--resolve requires --event")
+    if args.source and not args.event:
+        parser.error("--source requires --event")
+    if args.event:
+        try:
+            with event_database(args.event_db) as db:
+                resolved = resolve_event(args.source, args.event, db)
+        except (sqlite3.Error, ValueError, OSError) as exc:
+            parser.error(f"cannot resolve event: {exc}")
+        if args.resolve:
+            print(json.dumps(resolved, sort_keys=True))
+            return 0
+        if resolved["sound"] is None:
+            # Unknown events stay silent, not an implicit 'ok' beep.
+            return 0
+        requested = resolved["sound"]
+    else:
+        requested = args.sound.strip().lower().replace("_", "-")
 
     if requested in {"list", "ls"}:
         list_sounds()
