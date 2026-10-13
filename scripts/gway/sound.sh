@@ -443,7 +443,6 @@ DEFAULT_EVENTS = (
     ("gway-monitor", "undervoltage", "undervoltage"),
     ("hotplug", "bastion-insert", "notice"),
     ("hotplug", "bastion-remove", "warning"),
-    ("wifi", "connected", "ok"),
     ("wifi", "disconnected", "warning"),
     ("hotplug", "unknown", "attention"),
 )
@@ -466,7 +465,7 @@ def event_database(path=DEFAULT_EVENT_DB):
     connection.execute("CREATE TABLE IF NOT EXISTS motifs (source TEXT PRIMARY KEY, notes TEXT NOT NULL, cooldown_seconds REAL NOT NULL DEFAULT 45)")
     connection.execute("CREATE TABLE IF NOT EXISTS motif_context (slot INTEGER PRIMARY KEY CHECK(slot=1), source TEXT NOT NULL, played_at REAL NOT NULL)")
     if created:
-        connection.executemany("INSERT INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
+        connection.executemany("INSERT OR IGNORE INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
     # Idempotent seed also applies to databases created by S1.
     connection.executemany("INSERT OR IGNORE INTO events(source,event,sound) VALUES (?,?,?)", DEFAULT_EVENTS)
     connection.executemany(
