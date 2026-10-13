@@ -62,3 +62,35 @@ A GitHub-hosted `Behavior contracts` workflow runs this suite on PRs and
 main pushes. It requires no I²C, GPIO, audio equipment or self-hosted runner.
 Chunk 1 preserves all production scripts; later refactors should extend the
 contracts before moving implementation code.
+
+## S1 — Event-aware `sound`
+
+The existing `sound ok` / `sound warning` vocabulary remains intact.
+Callers can now supply events without knowing the available sounds:
+
+```bash
+sound --event SessionStart --source codex
+sound --event disconnected --source wifi
+sound --resolve --event Stop --source codex
+```
+
+`--resolve` prints a JSON record with `source`, `event`, `sound`
+and `matched_source`, without playing audio. Unknown events are **silent**.
+
+Mapping data is stored in SQLite at
+`~/.local/state/gway-sound/events.sqlite3` by default (override with
+`GWAY_SOUND_EVENT_DB` or `--event-db`). The first database creation seeds
+a small set of known Codex and Wi-Fi event mappings. The schema is:
+
+- `events(source, event, sound)` with unique (source, event)
+- `aliases(source, alias, event)` with unique (source, alias)
+
+Use source `*` for global mapping and aliases. A source-specific mapping
+wins over the global mapping. Aliases are resolved before mapping; there
+are no implicit aliases or heuristic guesses. SQLite changes to mappings
+are deliberately outside the public sound CLI in S1. No separate
+`sound-hook` command is introduced.
+
+**Motifs and source-context cooldown** are reserved for S2. Motif playback
+will precede the event sound, with a configurable context timeout and
+reannouncement on source change; S1 does not play motifs yet.
