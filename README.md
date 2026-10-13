@@ -94,3 +94,31 @@ are deliberately outside the public sound CLI in S1. No separate
 **Motifs and source-context cooldown** are reserved for S2. Motif playback
 will precede the event sound, with a configurable context timeout and
 reannouncement on source change; S1 does not play motifs yet.
+
+## S2 — Source motifs and auditory context
+
+Motifs announce **which source is speaking**, before the event-specific
+earcon. Each source can have one motif, defined in the SQLite `motifs`
+table with `source`, `notes` (JSON array of `[frequency_hz,
+duration_seconds, pause_seconds]`) and `cooldown_seconds`. The initial
+Codex and Wi-Fi motifs have a 45-second timeout. Existing S1 databases
+receive these defaults through an idempotent migration.
+
+The single persisted `motif_context` row holds the last audible source
+and motif playback timestamp. A source motif is played when the source
+changes, the timeout expires, or no prior context exists. Back-to-back
+events from the same source within the timeout play only the event sound.
+An intervening source without its own motif does not establish a new
+motif context.
+
+Playback of the motif followed by the event is serialized with an
+exclusive `motif-play.lock`, preventing other event-aware sound
+invocations from interleaving. The context is saved only after successful
+motif playback; muted GPIO output and dry runs do not advance it.
+`sound --event Stop --source codex --dry-run` previews whether a motif
+would play without changing context. `sound --resolve` continues to
+return the static event mapping without affecting playback state.
+
+The original `sound NAME` interface remains intact. Existing direct
+sound callers are unaffected by motif context and will be migrated in
+S3 where appropriate.

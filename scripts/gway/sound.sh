@@ -13,6 +13,7 @@ python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 import json
 import sqlite3
+import fcntl
 import math
 import os
 import shutil
@@ -417,9 +418,19 @@ def event_database(path=DEFAULT_EVENT_DB):
         os.chmod(path, 0o600)
     connection.execute("CREATE TABLE IF NOT EXISTS events (source TEXT NOT NULL, event TEXT NOT NULL, sound TEXT NOT NULL, PRIMARY KEY(source, event))")
     connection.execute("CREATE TABLE IF NOT EXISTS aliases (source TEXT NOT NULL, alias TEXT NOT NULL, event TEXT NOT NULL, PRIMARY KEY(source, alias))")
+    connection.execute("CREATE TABLE IF NOT EXISTS motifs (source TEXT PRIMARY KEY, notes TEXT NOT NULL, cooldown_seconds REAL NOT NULL DEFAULT 45)")
+    connection.execute("CREATE TABLE IF NOT EXISTS motif_context (slot INTEGER PRIMARY KEY CHECK(slot=1), source TEXT NOT NULL, played_at REAL NOT NULL)")
     if created:
         connection.executemany("INSERT INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
-        connection.commit()
+    # Idempotent seed also applies to databases created by S1.
+    connection.executemany(
+        "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
+        (
+            ("codex", json.dumps([[659, 0.07, 0.04], [988, 0.09, 0.0]]), 45),
+            ("wifi", json.dumps([[523, 0.06, 0.035], [784, 0.06, 0.0]]), 45),
+        ),
+    )
+    connection.commit()
     return connection
 
 
@@ -448,6 +459,64 @@ def resolve_event(source, event, db):
                     "matched_source": owner}
     return {"source": source, "event": event, "sound": None,
             "matched_source": None}
+
+
+
+def motif_for(source, db):
+    row = db.execute("SELECT notes, cooldown_seconds FROM motifs WHERE source=?", (source,)).fetchone()
+    if not row:
+        return None
+    notes, cooldown = row
+    try:
+        pattern = tuple((float(hz), float(duration), float(pause)) for hz, duration, pause in json.loads(notes))
+        if not pattern or len(pattern) > 12 or any(
+            not 80 <= hz <= 4000 or not 0.01 <= duration <= 0.4 or not 0 <= pause <= 0.4
+            for hz, duration, pause in pattern
+        ) or not 0 <= cooldown <= 3600:
+            raise ValueError("invalid motif")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid motif definition") from exc
+    return pattern, cooldown
+
+
+def play_event(resolved, args):
+    """Serialize source motif and event as one unit; commit context after motif playback."""
+    if resolved["sound"] is None:
+        return
+    source = resolved["source"]
+    db_path = os.path.abspath(args.event_db)
+    lock_path = os.path.join(os.path.dirname(db_path), "motif-play.lock")
+    with open(lock_path, "a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with event_database(db_path) as db:
+            motif = motif_for(source, db)
+            previous = db.execute("SELECT source, played_at FROM motif_context WHERE slot=1").fetchone()
+            now = time.time()
+            announce = bool(motif and (
+                previous is None or previous[0] != source or
+                now - previous[1] >= motif[1] or now < previous[1]
+            ))
+            if announce and not args.dry_run and not (args.backend in ("gpio", "auto") and gpio_muted()):
+                # Reuse the same playback backend; the motif is not part of public earcon vocabulary.
+                private_name = "__source_motif__"
+                PATTERNS[private_name] = motif[0]
+                try:
+                    play_pattern(private_name, pin=args.pin, volume=args.volume,
+                                 backend=args.backend, device=args.device)
+                finally:
+                    PATTERNS.pop(private_name, None)
+                db.execute(
+                    "INSERT INTO motif_context(slot,source,played_at) VALUES (1,?,?) "
+                    "ON CONFLICT(slot) DO UPDATE SET source=excluded.source, played_at=excluded.played_at",
+                    (source, time.time()),
+                )
+                db.commit()
+            if args.dry_run:
+                print(json.dumps({"source": source, "event": resolved["event"],
+                                  "motif": announce, "sound": resolved["sound"]}, sort_keys=True))
+            else:
+                play_pattern(resolved["sound"], pin=args.pin, volume=args.volume,
+                             backend=args.backend, device=args.device)
 
 
 def list_sounds():
@@ -501,7 +570,8 @@ def main(argv):
         if resolved["sound"] is None:
             # Unknown events stay silent, not an implicit 'ok' beep.
             return 0
-        requested = resolved["sound"]
+        play_event(resolved, args)
+        return 0
     else:
         requested = args.sound.strip().lower().replace("_", "-")
 
