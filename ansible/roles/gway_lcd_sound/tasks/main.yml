@@ -83,6 +83,13 @@
         path: "{{ gway_lcd_sound_source }}/scripts/deploy/systemd/user/gway-app-observer.service"
       register: gway_lcd_sound_observer_source
 
+    - name: Create observer unit staging directory
+      ansible.builtin.file:
+        path: "{{ gway_lcd_sound_staging.path }}/scripts/deploy/systemd/user"
+        state: directory
+        mode: "0755"
+      when: gway_lcd_sound_observer_source.stat.exists
+
     - name: Copy observer unit into staging
       ansible.builtin.copy:
         src: "{{ gway_lcd_sound_source }}/scripts/deploy/systemd/user/gway-app-observer.service"
