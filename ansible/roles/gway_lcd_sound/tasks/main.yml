@@ -130,51 +130,126 @@
     fail_msg: "Missing candidate command: {{ item.item.key }}"
   loop: "{{ gway_lcd_sound_command_files.results }}"
 
-- name: Activate release link
-  ansible.builtin.file:
-    src: "{{ gway_lcd_sound_release }}"
-    dest: "{{ gway_lcd_sound_current }}"
-    state: link
-    force: true
+- name: Inspect active release before cutover
+  ansible.builtin.stat:
+    path: "{{ gway_lcd_sound_current }}"
+    follow: false
+  register: gway_lcd_sound_prior_link
 
-- name: Expose stable commands
-  ansible.builtin.file:
-    src: "{{ gway_lcd_sound_current }}/scripts/gway/{{ item.value }}"
-    dest: "{{ gway_lcd_sound_bin_dir }}/{{ item.key }}"
-    state: link
-    force: true
-  loop: "{{ gway_lcd_sound_commands | dict2items }}"
+- name: Resolve prior active release
+  ansible.builtin.command:
+    argv: [readlink, -f, "{{ gway_lcd_sound_current }}"]
+  register: gway_lcd_sound_prior_target
+  changed_when: false
+  when: gway_lcd_sound_prior_link.stat.islnk | default(false)
 
 - name: Inspect candidate observer unit
   ansible.builtin.stat:
     path: "{{ gway_lcd_sound_release }}/scripts/deploy/systemd/user/gway-app-observer.service"
   register: gway_lcd_sound_observer_unit
 
-- name: Ensure observer remains shadow-only
+- name: Ensure observer remains shadow-only before cutover
   ansible.builtin.command:
     argv:
       - grep
       - -q
-      - -- 
+      - --
       - "--notification-mode shadow"
       - "{{ gway_lcd_sound_release }}/scripts/deploy/systemd/user/gway-app-observer.service"
   changed_when: false
   when: gway_lcd_sound_observer_unit.stat.exists
 
-- name: Install observer user unit without starting it
-  ansible.builtin.file:
-    src: "{{ gway_lcd_sound_current }}/scripts/deploy/systemd/user/gway-app-observer.service"
-    dest: "{{ gway_lcd_sound_unit_dir }}/gway-app-observer.service"
-    state: link
-    force: true
-  when: gway_lcd_sound_observer_unit.stat.exists
+- name: Activate and verify candidate with recovery on failure
+  block:
+    - name: Expose stable commands
+      ansible.builtin.file:
+        src: "{{ gway_lcd_sound_current }}/scripts/gway/{{ item.value }}"
+        dest: "{{ gway_lcd_sound_bin_dir }}/{{ item.key }}"
+        state: link
+        force: true
+      loop: "{{ gway_lcd_sound_commands | dict2items }}"
 
-- name: Verify installed command interfaces
+    - name: Install observer user unit without starting it
+      ansible.builtin.file:
+        src: "{{ gway_lcd_sound_current }}/scripts/deploy/systemd/user/gway-app-observer.service"
+        dest: "{{ gway_lcd_sound_unit_dir }}/gway-app-observer.service"
+        state: link
+        force: true
+      when: gway_lcd_sound_observer_unit.stat.exists
+
+    - name: Atomically switch current to verified candidate
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import os,sys,tempfile;
+            from pathlib import Path;
+            current=Path(sys.argv[1]);
+            target=sys.argv[2];
+            tmp=current.parent / ('.current.' + next(tempfile._get_candidate_names()));
+            os.symlink(target,tmp);
+            os.replace(tmp,current)
+          - "{{ gway_lcd_sound_current }}"
+          - "{{ gway_lcd_sound_release }}"
+      changed_when: true
+      when: (gway_lcd_sound_prior_target.stdout | default('')) != gway_lcd_sound_release
+
+    - name: Verify installed command interfaces
+      ansible.builtin.command:
+        argv: ["{{ gway_lcd_sound_bin_dir }}/{{ item }}", --help]
+      loop:
+        - lcd-lockfile-runner
+        - lcd-system-info-publisher
+        - gway-event-sound-monitor
+        - gway-app-observer
+      changed_when: false
+
+    - name: Verify active release target
+      ansible.builtin.command:
+        argv: [readlink, -f, "{{ gway_lcd_sound_current }}"]
+      register: gway_lcd_sound_active_target
+      changed_when: false
+      failed_when: gway_lcd_sound_active_target.stdout != gway_lcd_sound_release
+
+  rescue:
+    - name: Restore previous active release atomically
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import os,sys,tempfile;
+            from pathlib import Path;
+            current=Path(sys.argv[1]);
+            target=sys.argv[2];
+            tmp=current.parent / ('.current.' + next(tempfile._get_candidate_names()));
+            os.symlink(target,tmp);
+            os.replace(tmp,current)
+          - "{{ gway_lcd_sound_current }}"
+          - "{{ gway_lcd_sound_prior_target.stdout }}"
+      when: gway_lcd_sound_prior_target.stdout | default('') | length > 0
+
+    - name: Fail deployment after recovery attempt
+      ansible.builtin.fail:
+        msg: LCD Sound candidate failed activation or verification; previous release restored when available.
+
+- name: Record prior release only after successful cutover
   ansible.builtin.command:
-    argv: ["{{ gway_lcd_sound_bin_dir }}/{{ item }}", --help]
-  loop:
-    - lcd-lockfile-runner
-    - lcd-system-info-publisher
-    - gway-event-sound-monitor
-    - gway-app-observer
-  changed_when: false
+    argv:
+      - python3
+      - -c
+      - >-
+        import os,sys,tempfile;
+        from pathlib import Path;
+        previous=Path(sys.argv[1]);
+        target=sys.argv[2];
+        tmp=previous.parent / ('.previous.' + next(tempfile._get_candidate_names()));
+        os.symlink(target,tmp);
+        os.replace(tmp,previous)
+      - "{{ gway_lcd_sound_prefix }}/previous"
+      - "{{ gway_lcd_sound_prior_target.stdout }}"
+  changed_when: true
+  when:
+    - gway_lcd_sound_prior_target.stdout | default('') | length > 0
+    - gway_lcd_sound_prior_target.stdout != gway_lcd_sound_release
