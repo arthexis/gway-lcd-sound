@@ -130,18 +130,19 @@
     fail_msg: "Missing candidate command: {{ item.item.key }}"
   loop: "{{ gway_lcd_sound_command_files.results }}"
 
-- name: Inspect active release before cutover
+- name: Inspect current release link
   ansible.builtin.stat:
     path: "{{ gway_lcd_sound_current }}"
     follow: false
-  register: gway_lcd_sound_prior_link
+  register: gway_lcd_sound_current_state
 
-- name: Resolve prior active release
-  ansible.builtin.command:
-    argv: [readlink, -f, "{{ gway_lcd_sound_current }}"]
-  register: gway_lcd_sound_prior_target
-  changed_when: false
-  when: gway_lcd_sound_prior_link.stat.islnk | default(false)
+- name: Determine whether activation is required
+  ansible.builtin.set_fact:
+    gway_lcd_sound_activation_required: >-
+      {{
+        not (gway_lcd_sound_current_state.stat.islnk | default(false))
+        or (gway_lcd_sound_current_state.stat.lnk_source | default('')) != gway_lcd_sound_release
+      }}
 
 - name: Inspect candidate observer unit
   ansible.builtin.stat:
@@ -177,23 +178,13 @@
         force: true
       when: gway_lcd_sound_observer_unit.stat.exists
 
-    - name: Atomically switch current to verified candidate
-      ansible.builtin.command:
-        argv:
-          - python3
-          - -c
-          - >-
-            import os,sys,tempfile;
-            from pathlib import Path;
-            current=Path(sys.argv[1]);
-            target=sys.argv[2];
-            tmp=current.parent / ('.current.' + next(tempfile._get_candidate_names()));
-            os.symlink(target,tmp);
-            os.replace(tmp,current)
-          - "{{ gway_lcd_sound_current }}"
-          - "{{ gway_lcd_sound_release }}"
-      changed_when: true
-      when: (gway_lcd_sound_prior_target.stdout | default('')) != gway_lcd_sound_release
+    - name: Promote candidate release to current
+      ansible.builtin.file:
+        src: "{{ gway_lcd_sound_release }}"
+        dest: "{{ gway_lcd_sound_current }}"
+        state: link
+        force: true
+      when: gway_lcd_sound_activation_required | bool
 
     - name: Verify installed command interfaces
       ansible.builtin.command:
@@ -213,43 +204,24 @@
       failed_when: gway_lcd_sound_active_target.stdout != gway_lcd_sound_release
 
   rescue:
-    - name: Restore previous active release atomically
-      ansible.builtin.command:
-        argv:
-          - python3
-          - -c
-          - >-
-            import os,sys,tempfile;
-            from pathlib import Path;
-            current=Path(sys.argv[1]);
-            target=sys.argv[2];
-            tmp=current.parent / ('.current.' + next(tempfile._get_candidate_names()));
-            os.symlink(target,tmp);
-            os.replace(tmp,current)
-          - "{{ gway_lcd_sound_current }}"
-          - "{{ gway_lcd_sound_prior_target.stdout }}"
-      when: gway_lcd_sound_prior_target.stdout | default('') | length > 0
+    - name: Restore previous active release
+      ansible.builtin.file:
+        src: "{{ gway_lcd_sound_current_state.stat.lnk_source }}"
+        dest: "{{ gway_lcd_sound_current }}"
+        state: link
+        force: true
+      when: gway_lcd_sound_current_state.stat.islnk | default(false)
 
     - name: Fail deployment after recovery attempt
       ansible.builtin.fail:
         msg: LCD Sound candidate failed activation or verification; previous release restored when available.
 
 - name: Record prior release only after successful cutover
-  ansible.builtin.command:
-    argv:
-      - python3
-      - -c
-      - >-
-        import os,sys,tempfile;
-        from pathlib import Path;
-        previous=Path(sys.argv[1]);
-        target=sys.argv[2];
-        tmp=previous.parent / ('.previous.' + next(tempfile._get_candidate_names()));
-        os.symlink(target,tmp);
-        os.replace(tmp,previous)
-      - "{{ gway_lcd_sound_prefix }}/previous"
-      - "{{ gway_lcd_sound_prior_target.stdout }}"
-  changed_when: true
+  ansible.builtin.file:
+    src: "{{ gway_lcd_sound_current_state.stat.lnk_source }}"
+    dest: "{{ gway_lcd_sound_prefix }}/previous"
+    state: link
+    force: true
   when:
-    - gway_lcd_sound_prior_target.stdout | default('') | length > 0
-    - gway_lcd_sound_prior_target.stdout != gway_lcd_sound_release
+    - gway_lcd_sound_current_state.stat.islnk | default(false)
+    - gway_lcd_sound_activation_required | bool
