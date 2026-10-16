@@ -1,0 +1,53 @@
+name: Ansible deployment
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Ansible
+        run: python -m pip install 'ansible-core>=2.16,<2.19'
+      - name: Validate playbook syntax
+        run: ansible-playbook ansible/playbooks/install.yml -i localhost, -c local --syntax-check
+      - name: Deploy LCD Sound in isolated HOME
+        env:
+          HOME: ${{ runner.temp }}/lcd-sound-home
+        run: |
+          mkdir -p "$HOME"
+          sh deploy.sh
+          test -L "$HOME/.local/share/gway-lcd-sound/current"
+          test -x "$HOME/.local/bin/lcd-lockfile-runner"
+          test -x "$HOME/.local/bin/gway-event-sound-monitor"
+      - name: Redeploy same SHA and verify idempotency
+        env:
+          HOME: ${{ runner.temp }}/lcd-sound-home
+        run: |
+          before=$(readlink "$HOME/.local/share/gway-lcd-sound/current")
+          sh deploy.sh
+          after=$(readlink "$HOME/.local/share/gway-lcd-sound/current")
+          test "$before" = "$after"
+          test -z "$(find "$HOME/.local/share/gway-lcd-sound/releases" -maxdepth 1 -name '.staging.*' -print -quit)"
+      - name: Reject corrupted existing release
+        env:
+          HOME: ${{ runner.temp }}/lcd-sound-home
+        run: |
+          current="$HOME/.local/share/gway-lcd-sound/current"
+          target=$(readlink -f "$current")
+          rm -f "$target/scripts/gway/lcd_engine/hardware/discovery.py"
+          if sh deploy.sh; then
+            echo "Corrupt immutable release unexpectedly accepted" >&2
+            exit 1
+          fi
+          test "$(readlink -f "$current")" = "$target"
