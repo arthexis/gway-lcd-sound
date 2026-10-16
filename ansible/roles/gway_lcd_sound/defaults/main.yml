@@ -1,0 +1,15 @@
+---
+gway_lcd_sound_source: "{{ playbook_dir }}/../.."
+gway_lcd_sound_prefix: "{{ ansible_env.HOME }}/.local/share/gway-lcd-sound"
+gway_lcd_sound_bin_dir: "{{ ansible_env.HOME }}/.local/bin"
+gway_lcd_sound_unit_dir: "{{ ansible_env.HOME }}/.config/systemd/user"
+gway_lcd_sound_commands:
+  lcd-lockfile-runner: lcd_lockfile_runner.py
+  lcd-system-info-publisher: lcd_system_info_publisher.py
+  lcd-actions-runner-status: lcd-actions-runner-status
+  gway-event-sound-monitor: gway_event_sound_monitor.py
+  codex-sound-hook: codex-sound-hook
+  github-actions-sound-hook: github-actions-sound-hook
+  github-actions-job-started: github-actions-job-started
+  github-actions-job-completed: github-actions-job-completed
+  gway-app-observer: gway_app_observer.py
