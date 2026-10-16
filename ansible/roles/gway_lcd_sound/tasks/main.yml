@@ -78,6 +78,12 @@
         dest: "{{ gway_lcd_sound_staging.path }}/scripts/gway/"
         mode: preserve
 
+    - name: Ensure staged command entry points are executable
+      ansible.builtin.file:
+        path: "{{ gway_lcd_sound_staging.path }}/scripts/gway/{{ item.value }}"
+        mode: "0755"
+      loop: "{{ gway_lcd_sound_commands | dict2items }}"
+
     - name: Inspect optional observer unit
       ansible.builtin.stat:
         path: "{{ gway_lcd_sound_source }}/scripts/deploy/systemd/user/gway-app-observer.service"
