@@ -1,0 +1,6 @@
+---
+- name: Install GWAY LCD Sound locally
+  hosts: all
+  gather_facts: true
+  roles:
+    - gway_lcd_sound
