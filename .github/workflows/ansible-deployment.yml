@@ -20,6 +20,8 @@ jobs:
       - name: Install Ansible
         run: python -m pip install 'ansible-core>=2.16,<2.19'
       - name: Validate playbook syntax
+        env:
+          ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles
         run: ansible-playbook ansible/playbooks/install.yml -i localhost, -c local --syntax-check
       - name: Deploy LCD Sound in isolated HOME
         env:
