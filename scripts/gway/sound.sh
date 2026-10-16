@@ -447,6 +447,8 @@ DEFAULT_EVENTS = (
     ("hotplug", "unknown", "attention"),
     ("github-actions", "started", "notice"),
     ("github-actions", "stopped", "warning"),
+    ("github-actions", "job-started", "notice"),
+    ("github-actions", "job-completed", "notice"),
 )
 
 
