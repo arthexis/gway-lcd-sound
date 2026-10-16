@@ -139,3 +139,16 @@ removing the playback wrapper. Changing a mapping no longer requires changing
 the producer. Codex lifecycle configuration and any remaining Actions-runner
 call sites still need their own audit and migration; this first pass does not
 modify the installed Codex runtime or remove its legacy hook.
+
+## GitHub Actions runner motif
+
+The `github-actions` source has its own ascending three-note motif (392, 587,
+and 784 Hz) with a 45-second context cooldown. Existing `started` and
+`stopped` event mappings use the `notice` and `warning` earcons respectively.
+The motif is seeded idempotently for both new and existing event databases;
+customized motif rows are never overwritten.
+
+These mappings do **not** install runner lifecycle hooks. Playback requires a
+trusted runner-side producer to emit `sound --event started --source github-actions`
+and `sound --event stopped --source github-actions`. Do not claim audible
+runner notifications until those hooks are installed and field-tested.
