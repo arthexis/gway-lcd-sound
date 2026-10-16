@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Best-effort GitHub Actions runner hook. Never fail a job because of audio.
+set -u
+case "${1:-}" in
+  started) event=job-started ;;
+  completed) event=job-completed ;;
+  *) exit 0 ;;
+esac
+sound_bin="${GWAY_RUNNER_SOUND_BIN:-/usr/local/bin/sound}"
+if [[ ! -x "$sound_bin" ]]; then
+  sound_bin="$(command -v sound 2>/dev/null || true)"
+fi
+[[ -n "$sound_bin" && -x "$sound_bin" ]] || exit 0
+if command -v timeout >/dev/null 2>&1; then
+  timeout 5 "$sound_bin" --event "$event" --source github-actions >/dev/null 2>&1 || true
+else
+  "$sound_bin" --event "$event" --source github-actions >/dev/null 2>&1 || true
+fi
+exit 0

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# GitHub runner hook entry point; audio is always best effort.
+"$(dirname "$0")/github-actions-sound-hook" completed || true
+exit 0
