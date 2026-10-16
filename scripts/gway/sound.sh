@@ -585,6 +585,8 @@ def build_parser():
         default="list",
         help="sound name, list, all, or test",
     )
+    parser.add_argument("--motif", help="Explicit motif to play before a sound; bypasses event cooldown")
+    parser.add_argument("--list-motifs", action="store_true", help="Print installed motif names as JSON")
     parser.add_argument("--event", help="Producer-owned event name")
     parser.add_argument("--source", help="Producer identity for event lookup")
     parser.add_argument("--resolve", action="store_true", help="Print event resolution as JSON without playback")
@@ -604,6 +606,14 @@ def main(argv):
     args.volume = clamp(args.volume, 0.0, 1.0)
     args.pause = clamp(args.pause, 0.0, 3.0)
     args.backend = (args.backend or "auto").strip().lower()
+    if args.list_motifs:
+        if args.event or args.motif or args.sound != "list":
+            parser.error("--list-motifs cannot be combined with playback")
+        with event_database(args.event_db) as db:
+            print(json.dumps([row[0] for row in db.execute("SELECT source FROM motifs ORDER BY source")]))
+        return 0
+    if args.motif and args.event:
+        parser.error("--motif is only for direct sound playback")
     if args.resolve and not args.event:
         parser.error("--resolve requires --event")
     if args.source and not args.event:
@@ -637,7 +647,26 @@ def main(argv):
         return 0
     if requested not in PATTERNS:
         parser.error(f"unknown sound: {requested}")
-    play_pattern(requested, pin=args.pin, volume=args.volume, backend=args.backend, device=args.device, dry_run=args.dry_run)
+    if args.motif:
+        with event_database(args.event_db) as db:
+            motif = motif_for(args.motif, db)
+            if motif is None:
+                parser.error("unknown motif")
+        db_path = os.path.abspath(args.event_db)
+        lock_path = os.path.join(os.path.dirname(db_path), "motif-play.lock")
+        with open(lock_path, "a+b") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            private_name = "__manual_motif__"
+            PATTERNS[private_name] = motif[0]
+            try:
+                play_pattern(private_name, pin=args.pin, volume=args.volume,
+                             backend=args.backend, device=args.device, dry_run=args.dry_run)
+                play_pattern(requested, pin=args.pin, volume=args.volume,
+                             backend=args.backend, device=args.device, dry_run=args.dry_run)
+            finally:
+                PATTERNS.pop(private_name, None)
+    else:
+        play_pattern(requested, pin=args.pin, volume=args.volume, backend=args.backend, device=args.device, dry_run=args.dry_run)
     return 0
 
 
