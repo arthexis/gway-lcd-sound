@@ -159,14 +159,12 @@ environment**, using the installed absolute path (adapt the home directory
 to the runner account):
 
 ```sh
-ACTIONS_RUNNER_HOOK_JOB_STARTED=/home/arthe/.local/bin/github-actions-sound-hook
-ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/home/arthe/.local/bin/github-actions-sound-hook
+ACTIONS_RUNNER_HOOK_JOB_STARTED=/home/arthe/.local/bin/github-actions-job-started
+ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/home/arthe/.local/bin/github-actions-job-completed
 ```
 
-Both variables point to the same script, but it needs to know which event
-occurred. Use small wrapper scripts invoking `github-actions-sound-hook started`
-and `github-actions-sound-hook completed` respectively, then configure the
-two runner variables to point to those wrappers. Hooks must be executable
+The two installed wrappers invoke the shared sound hook with the correct
+event argument. Hooks must be executable
 and available to the runner OS account. Do not configure them in a repository
 workflow: these are runner-side settings. Validate runner service ownership
 and its environment before installing or restarting anything.
