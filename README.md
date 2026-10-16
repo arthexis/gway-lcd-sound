@@ -148,7 +148,30 @@ and 784 Hz) with a 45-second context cooldown. Existing `started` and
 The motif is seeded idempotently for both new and existing event databases;
 customized motif rows are never overwritten.
 
-These mappings do **not** install runner lifecycle hooks. Playback requires a
+The repository also ships `github-actions-sound-hook`, a best-effort hook
+for the official runner's **job** lifecycle. It maps `started` to
+`job-started / notice` and `completed` to `job-completed / notice`.
+Completion is intentionally neutral: the official completed hook alone does
+not establish whether the job succeeded or failed. Audio failures are ignored.
+
+To opt in on Gway-001, configure these two variables **in the runner process
+environment**, using the installed absolute path (adapt the home directory
+to the runner account):
+
+```sh
+ACTIONS_RUNNER_HOOK_JOB_STARTED=/home/arthe/.local/bin/github-actions-sound-hook
+ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/home/arthe/.local/bin/github-actions-sound-hook
+```
+
+Both variables point to the same script, but it needs to know which event
+occurred. Use small wrapper scripts invoking `github-actions-sound-hook started`
+and `github-actions-sound-hook completed` respectively, then configure the
+two runner variables to point to those wrappers. Hooks must be executable
+and available to the runner OS account. Do not configure them in a repository
+workflow: these are runner-side settings. Validate runner service ownership
+and its environment before installing or restarting anything.
+
+The installer does **not** activate runner hooks or modify the runner service. Playback requires a
 trusted runner-side producer to emit `sound --event started --source github-actions`
 and `sound --event stopped --source github-actions`. Do not claim audible
 runner notifications until those hooks are installed and field-tested.
