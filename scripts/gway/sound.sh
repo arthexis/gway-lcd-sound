@@ -475,6 +475,7 @@ def event_database(path=DEFAULT_EVENT_DB):
         (
             ("codex", json.dumps([[659, 0.07, 0.04], [988, 0.09, 0.0]]), 45),
             ("wifi", json.dumps([[523, 0.06, 0.035], [784, 0.06, 0.0]]), 45),
+            ("github-actions", json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45),
         ),
     )
     connection.commit()
