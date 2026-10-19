@@ -101,18 +101,18 @@ activate() {
   mkdir -p "$prefix" "$bin_dir" "$man_dir"
   temp="$prefix/.current.$$"
   ln -s "$target" "$temp"
-  mv -Tf "$temp" "$current"
+  # Publish the release pointer last: a failed link update must not switch code.
   for pair in "${commands[@]}"; do
     local cmd="${pair%%:*}" file="${pair#*:}" link
     link="$bin_dir/.$cmd.$$"
     ln -s "$current/scripts/gway/$file" "$link"
-    mv -Tf "$link" "$bin_dir/$cmd"
+    mv -Tf "$link" "$bin_dir/$cmd" || { rm -f "$link" "$temp"; return 1; }
   done
   for page in "${manpages[@]}"; do
     if [[ -f "$target/docs/man/man1/$page" ]]; then
       link="$man_dir/.$page.$$"
       ln -s "$current/docs/man/man1/$page" "$link"
-      mv -Tf "$link" "$man_dir/$page"
+      mv -Tf "$link" "$man_dir/$page" || { rm -f "$link" "$temp"; return 1; }
     elif [[ -L "$man_dir/$page" && "$(readlink "$man_dir/$page")" == "$current/docs/man/man1/$page" ]]; then
       rm "$man_dir/$page"
     fi
@@ -122,7 +122,7 @@ activate() {
     mkdir -p "$unit_dir"
     link="$unit_dir/.$observer_unit.$$"
     ln -s "$current/scripts/deploy/systemd/user/$observer_unit" "$link"
-    mv -Tf "$link" "$unit_dir/$observer_unit"
+    mv -Tf "$link" "$unit_dir/$observer_unit" || { rm -f "$link" "$temp"; return 1; }
     if command -v systemctl >/dev/null; then
       systemctl --user daemon-reload || echo "Warning: user daemon-reload unavailable; run it after login" >&2
     fi
@@ -132,6 +132,7 @@ activate() {
       systemctl --user daemon-reload || echo "Warning: user daemon-reload unavailable" >&2
     fi
   fi
+  mv -Tf "$temp" "$current"
 }
 maybe_restart() {
   if [[ "$restart" == 1 ]] && command -v systemctl >/dev/null; then
@@ -173,8 +174,7 @@ PY
       ln -s "$old" "$prefix/.previous.$$"
       mv -Tf "$prefix/.previous.$$" "$previous"
     fi
-    activate "$target"
-    if ! verify; then
+    if ! activate "$target" || ! verify; then
       if [[ -n "$old" ]]; then activate "$old"; fi
       echo "Verification failed; restored previous release where available" >&2
       exit 1
@@ -189,8 +189,7 @@ PY
     prior="$(readlink -f "$previous")"
     old=""
     if resolve_current; then old="$(readlink -f "$current")"; fi
-    activate "$prior"
-    if ! verify; then
+    if ! activate "$prior" || ! verify; then
       [[ -z "$old" ]] || activate "$old"
       exit 1
     fi
