@@ -399,6 +399,7 @@ DEFAULT_EVENTS = (
     ("codex", "SubagentStart", "busy"),
     ("codex", "SubagentStop", "notice"),
     ("codex", "Stop", "ok"),
+    ("codex", "Interrupt", "warning"),
     ("wifi", "connected", "ok"),
     ("gway-monitor", "bastion-ready", "ok"),
     ("gway-monitor", "bastion-failed", "error"),

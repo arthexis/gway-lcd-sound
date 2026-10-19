@@ -39,3 +39,5 @@ Mute, event mapping, source motifs, cooldown, locking and playback error
 behavior are inherited from the shared `sound` engine. A release rollback
 uses `bash scripts/deploy/install.sh rollback`; Codex hook configuration
 remains operator-managed. Physical audio preview requires separate approval.
+
+Optional cancellation event: `Interrupt` resolves to the existing `warning` cue. The local Codex hook remains opt-in and subject to operator review; no installer changes hook configuration.
