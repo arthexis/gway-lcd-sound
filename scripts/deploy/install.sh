@@ -31,6 +31,14 @@ commands=(
   gway-event-sound-monitor:gway_event_sound_monitor.py
   codex-sound-hook:codex-sound-hook
   codex-lifecycle-sound:codex-lifecycle-sound
+  codex-hook-SessionStart:codex-hook-SessionStart
+  codex-hook-UserPromptSubmit:codex-hook-UserPromptSubmit
+  codex-hook-PermissionRequest:codex-hook-PermissionRequest
+  codex-hook-PreCompact:codex-hook-PreCompact
+  codex-hook-PostCompact:codex-hook-PostCompact
+  codex-hook-SubagentStart:codex-hook-SubagentStart
+  codex-hook-SubagentStop:codex-hook-SubagentStop
+  codex-hook-Stop:codex-hook-Stop
   github-actions-sound-hook:github-actions-sound-hook
   github-actions-job-started:github-actions-job-started
   github-actions-job-completed:github-actions-job-completed
@@ -43,7 +51,7 @@ verify() {
   resolve_current || { echo "No active LCD Sound release" >&2; return 1; }
   for pair in "${commands[@]}"; do
     local cmd="${pair%%:*}" file="${pair#*:}"
-    [[ -x "$bin_dir/$cmd" && -f "$current/scripts/gway/$file" ]] || {
+    [[ -L "$bin_dir/$cmd" && "$(readlink "$bin_dir/$cmd")" == "$current/scripts/gway/$file" && -x "$bin_dir/$cmd" && -f "$current/scripts/gway/$file" ]] || {
       echo "Missing installed command: $cmd" >&2; return 1;
     }
   done
@@ -121,7 +129,7 @@ case "$action" in
         mkdir -p "$staging/scripts/deploy/systemd/user"
         cp "$source_dir/scripts/deploy/systemd/user/$observer_unit" "$staging/scripts/deploy/systemd/user/$observer_unit"
       fi
-      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed" "$staging/scripts/gway/codex-lifecycle-sound"
+      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed" "$staging/scripts/gway/codex-lifecycle-sound" "$staging/scripts/gway"/codex-hook-*
       PYTHONDONTWRITEBYTECODE=1 python3 - "$staging/scripts/gway" <<'PY'
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))
