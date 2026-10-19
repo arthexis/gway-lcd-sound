@@ -77,6 +77,16 @@ def test_versioned_install_verify_and_rollback(tmp_path):
     assert failed.returncode != 0
     assert "first" in str((tmp_path / "installed" / "current").resolve())
     discovery.write_text(original_discovery)
+    # Failed link activation must not publish a new release.
+    blocker = tmp_path / "bin" / "gway-app-observer"
+    blocker.unlink()
+    blocker.mkdir()
+    blocked = run_raw("install", "blocked")
+    assert blocked.returncode != 0
+    assert "first" in str((tmp_path / "installed" / "current").resolve())
+    blocker.rmdir()
+    run("install", "first")
+
     # Create the next checkout/release with a changed source file.
     (checkout / "scripts" / "gway" / "lcd-actions-runner-status").write_text(
         (checkout / "scripts" / "gway" / "lcd-actions-runner-status").read_text()
