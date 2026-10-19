@@ -21,6 +21,7 @@ current="$prefix/current"
 previous="$prefix/previous"
 releases="$prefix/releases"
 unit_dir="${GWAY_LCD_SOUND_UNIT_DIR:-$HOME/.config/systemd/user}"
+man_dir="${GWAY_LCD_SOUND_MAN_DIR:-$HOME/.local/share/man/man1}"
 observer_unit="gway-app-observer.service"
 
 # Entry-point symlinks stay fixed, while their resolved targets switch releases.
@@ -34,9 +35,25 @@ commands=(
   github-actions-job-started:github-actions-job-started
   github-actions-job-completed:github-actions-job-completed
   gway-app-observer:gway_app_observer.py
+  gway-lcd-sound:gway-lcd-sound
+)
+manpages=(gway-lcd-sound.1)
+legacy_helpers=(
+  gway-eth0-node-lcd-monitor
+  gway-event-sound-hotplug
+  gway-toggle-gpio-sound-mute
+  gway-system-notify
 )
 resolve_current() {
   [[ -L "$current" && -d "$current/scripts/gway" ]]
+}
+report_stale_legacy_helpers() {
+  local command
+  for command in "${legacy_helpers[@]}"; do
+    if [[ -f "$bin_dir/$command" && ! -L "$bin_dir/$command" ]]; then
+      echo "Warning: stale independent legacy helper retained: $bin_dir/$command" >&2
+    fi
+  done
 }
 verify() {
   resolve_current || { echo "No active LCD Sound release" >&2; return 1; }
@@ -45,6 +62,13 @@ verify() {
     [[ -L "$bin_dir/$cmd" && "$(readlink "$bin_dir/$cmd")" == "$current/scripts/gway/$file" && -x "$bin_dir/$cmd" && -f "$current/scripts/gway/$file" ]] || {
       echo "Missing installed command: $cmd" >&2; return 1;
     }
+  done
+  for page in "${manpages[@]}"; do
+    if [[ -f "$current/docs/man/man1/$page" ]]; then
+      [[ -L "$man_dir/$page" && "$(readlink "$man_dir/$page")" == "$current/docs/man/man1/$page" ]] || {
+        echo "Missing installed manual page: $page" >&2; return 1;
+      }
+    fi
   done
   "$bin_dir/lcd-lockfile-runner" --help >/dev/null
   "$bin_dir/lcd-system-info-publisher" --help >/dev/null
@@ -68,12 +92,13 @@ import event_engine.app_observer
 import event_engine.observer_lock
 import event_engine.notification_journal
 PY
+  report_stale_legacy_helpers
   echo "LCD Sound installation verified: $(readlink -f "$current")"
 }
 activate() {
   local target="$1" temp
   [[ -d "$target/scripts/gway" ]] || { echo "Invalid release: $target" >&2; return 1; }
-  mkdir -p "$prefix" "$bin_dir"
+  mkdir -p "$prefix" "$bin_dir" "$man_dir"
   temp="$prefix/.current.$$"
   ln -s "$target" "$temp"
   mv -Tf "$temp" "$current"
@@ -82,6 +107,15 @@ activate() {
     link="$bin_dir/.$cmd.$$"
     ln -s "$current/scripts/gway/$file" "$link"
     mv -Tf "$link" "$bin_dir/$cmd"
+  done
+  for page in "${manpages[@]}"; do
+    if [[ -f "$target/docs/man/man1/$page" ]]; then
+      link="$man_dir/.$page.$$"
+      ln -s "$current/docs/man/man1/$page" "$link"
+      mv -Tf "$link" "$man_dir/$page"
+    elif [[ -L "$man_dir/$page" && "$(readlink "$man_dir/$page")" == "$current/docs/man/man1/$page" ]]; then
+      rm "$man_dir/$page"
+    fi
   done
   # Install the definition only; never enable, start, or restart this service.
   if [[ -f "$target/scripts/deploy/systemd/user/$observer_unit" ]]; then
@@ -116,11 +150,13 @@ case "$action" in
       trap 'rm -rf "$staging"' EXIT
       mkdir -p "$staging/scripts"
       cp -a "$source_dir/scripts/gway" "$staging/scripts/gway"
+      mkdir -p "$staging/docs/man/man1"
+      cp "$source_dir/docs/man/man1/gway-lcd-sound.1" "$staging/docs/man/man1/gway-lcd-sound.1"
       if [[ -f "$source_dir/scripts/deploy/systemd/user/$observer_unit" ]]; then
         mkdir -p "$staging/scripts/deploy/systemd/user"
         cp "$source_dir/scripts/deploy/systemd/user/$observer_unit" "$staging/scripts/deploy/systemd/user/$observer_unit"
       fi
-      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed"
+      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed" "$staging/scripts/gway/gway-lcd-sound"
       PYTHONDONTWRITEBYTECODE=1 python3 - "$staging/scripts/gway" <<'PY'
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))

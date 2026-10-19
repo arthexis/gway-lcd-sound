@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from email.message import EmailMessage
+import mimetypes
 from pathlib import Path
 import shlex
 import smtplib
@@ -62,7 +63,24 @@ def choose_recipient(values: dict[str, str], channel: str) -> str:
     )
 
 
-def send_message(values: dict[str, str], *, channel: str, subject: str, body: str) -> str:
+def attach_files(message: EmailMessage, attachments: list[Path]) -> None:
+    for path in attachments:
+        if not path.is_file():
+            raise NotifyError(f"attachment is not a readable file: {path}")
+        content_type, encoding = mimetypes.guess_type(str(path))
+        if encoding:
+            content_type = None
+        if not content_type:
+            content_type = "application/octet-stream"
+        maintype, subtype = content_type.split("/", 1)
+        message.add_attachment(
+            path.read_bytes(), maintype=maintype, subtype=subtype, filename=path.name
+        )
+
+
+def send_message(
+    values: dict[str, str], *, channel: str, subject: str, body: str, attachments: list[Path]
+) -> str:
     recipient = choose_recipient(values, channel)
     if not recipient:
         raise NotifyError("no system notification recipient configured")
@@ -73,6 +91,7 @@ def send_message(values: dict[str, str], *, channel: str, subject: str, body: st
     message["Subject"] = subject
     message["X-GWAY-Notification-Channel"] = channel
     message.set_content(body)
+    attach_files(message, attachments)
 
     host = require(values, "EMAIL_HOST")
     port = int(require(values, "EMAIL_PORT"))
@@ -104,6 +123,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--subject", required=True)
     parser.add_argument("--body-file", type=Path)
     parser.add_argument("--body")
+    parser.add_argument("--attach", action="append", type=Path, default=[])
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -119,9 +139,17 @@ def main(argv: list[str]) -> int:
         recipient = choose_recipient(values, args.channel)
         if args.dry_run:
             print(f"dry_run=yes channel={args.channel} recipient={recipient} subject={args.subject}")
+            for path in args.attach:
+                print(f"attachment={path}")
             print(body)
             return 0
-        recipient = send_message(values, channel=args.channel, subject=args.subject, body=body)
+        recipient = send_message(
+            values,
+            channel=args.channel,
+            subject=args.subject,
+            body=body,
+            attachments=args.attach,
+        )
     except Exception as exc:
         print(f"gway-system-notify: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1

@@ -9,7 +9,7 @@ User=arthe
 Group=arthe
 WorkingDirectory=/home/arthe
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 /home/arthe/.local/bin/gway-eth0-node-lcd-monitor --interval 15
+ExecStart=/home/arthe/.local/bin/gway-lcd-sound monitor eth0 --interval 15
 Restart=always
 RestartSec=5
 

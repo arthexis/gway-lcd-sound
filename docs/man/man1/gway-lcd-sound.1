@@ -1,0 +1,75 @@
+.TH GWAY-LCD-SOUND 1 "2026-10-18" "GWAY local tools" "User Commands"
+.SH NAME
+gway-lcd-sound \- release-owned LCD and sound helper dispatcher
+.SH SYNOPSIS
+.B gway-lcd-sound
+.B monitor eth0
+.RI [ monitor-options ]
+.br
+.B gway-lcd-sound
+.B hotplug
+.I event
+.br
+.B gway-lcd-sound
+.B mute toggle
+.RI [ --status ]
+.br
+.B gway-lcd-sound
+.B notify
+.RI [ notify-options ]
+.SH DESCRIPTION
+.B gway-lcd-sound
+dispatches user-level LCD and sound helper commands from the active LCD Sound
+release. It replaces its process with the selected helper, so monitor and
+hotplug signal and exit behavior are preserved.
+.PP
+The installer keeps the command at
+.I ~/.local/bin/gway-lcd-sound
+and installs this manual page at
+.IR ~/.local/share/man/man1/gway-lcd-sound.1 .
+.SH COMMANDS
+.TP
+.B monitor eth0
+Runs the Ethernet LCD monitor. Remaining options are passed to the monitor,
+including
+.BR --interval ,
+.BR --once ,
+and
+.BR --no-scan .
+.TP
+.B hotplug event
+Passes the event to the release-owned hotplug helper. The helper uses
+.I GWAY_SOUND_BIN
+when set, otherwise
+.IR /usr/local/bin/sound .
+.TP
+.B mute toggle
+Toggles GPIO sound mute state. With
+.B --status
+it reports the state without changing it.
+.TP
+.B notify
+Passes notification options through to the release-owned notifier. It accepts
+.BR --channel ,
+.BR --subject ,
+.BR --body-file ,
+.BR --body ,
+.BR --attach ,
+and
+.BR --dry-run .
+.SH COMPATIBILITY
+The former standalone helper files are not overwritten or deleted by the
+release installer. Root-owned systemd and udev configuration must be migrated
+separately under field-change approval. Retire a standalone helper only after
+its consumers have been audited and the backup procedure in the repository
+operations documentation has completed.
+.SH FILES
+.TP
+.I ~/.local/share/gway-lcd-sound/current
+The active release selected by the installer.
+.TP
+.I ~/.local/bin/gway-lcd-sound
+Stable link to the dispatcher in the active release.
+.SH SEE ALSO
+.BR lcd-lockfile-runner (1),
+.BR sound (1)

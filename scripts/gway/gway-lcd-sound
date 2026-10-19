@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Release-owned entry point for GWAY LCD and sound user helpers.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: gway-lcd-sound COMMAND [ARGS...]
+
+Commands:
+  monitor eth0 [OPTIONS]       Run the Ethernet LCD monitor.
+  hotplug EVENT                Play the event sound for a hotplug event.
+  mute toggle [--status]       Toggle, or inspect, GPIO sound mute state.
+  notify [OPTIONS]             Send a system notification.
+
+Each command replaces the corresponding legacy helper.  See gway-lcd-sound(1).
+EOF
+}
+
+script_path="${BASH_SOURCE[0]}"
+while [[ -L "$script_path" ]]; do
+  script_dir="$(cd -P -- "$(dirname "$script_path")" && pwd)"
+  link_target="$(readlink "$script_path")"
+  if [[ "$link_target" == /* ]]; then
+    script_path="$link_target"
+  else
+    script_path="$script_dir/$link_target"
+  fi
+done
+script_dir="$(cd -P -- "$(dirname "$script_path")" && pwd)"
+
+command="${1:-}"
+case "$command" in
+  monitor)
+    [[ "${2:-}" == "eth0" ]] || { usage >&2; exit 64; }
+    shift 2
+    exec python3 "$script_dir/gway_eth0_node_lcd_monitor.py" --iface eth0 "$@"
+    ;;
+  hotplug)
+    shift
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+      usage
+      exit 0
+    fi
+    exec "$script_dir/gway-event-sound-hotplug" "$@"
+    ;;
+  mute)
+    [[ "${2:-}" == "toggle" ]] || { usage >&2; exit 64; }
+    shift 2
+    exec "$script_dir/gway-toggle-gpio-sound-mute" "$@"
+    ;;
+  notify)
+    shift
+    exec python3 "$script_dir/gway-system-notify" "$@"
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 64
+    ;;
+esac

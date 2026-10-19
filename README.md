@@ -31,7 +31,27 @@ bash scripts/deploy/install.sh verify
 bash scripts/deploy/install.sh rollback
 ```
 
-The installer stages a versioned release under `~/.local/share/gway-lcd-sound/releases/`, atomically switches `current`, installs stable command links in `~/.local/bin`, and verifies installed entry points and Python imports. It restarts the user LCD lockfile service when available. Use `--no-restart` for CI or isolated tests. System-level units, udev rules, `/usr/local` helpers and their required permissions remain separate administrative setup steps documented under `docs/operations/gway/`.
+The installer stages a versioned release under `~/.local/share/gway-lcd-sound/releases/`, atomically switches `current`, installs stable command links in `~/.local/bin`, and verifies installed entry points and Python imports. It also installs `gway-lcd-sound` and its user manual page. It restarts the user LCD lockfile service when available. Use `--no-restart` for CI or isolated tests. System-level units, udev rules, `/usr/local` helpers and their required permissions remain separate administrative setup steps; the tracked templates are not applied to a host by the installer.
+
+### Release-owned LCD/Sound helper CLI
+
+Use the stable dispatcher for the four user-level helper contracts:
+
+```bash
+gway-lcd-sound monitor eth0 --interval 15
+gway-lcd-sound hotplug wifi-add
+gway-lcd-sound mute toggle --status
+gway-lcd-sound notify --subject "GWAY status" --body "ready" --dry-run
+man gway-lcd-sound
+```
+
+The installer reports, but does not replace or delete, stale independent legacy
+helpers. The tracked systemd templates now use the dispatcher; applying those
+templates, reloading systemd or udev, restarting services, and retiring the old
+files are separate approved field operations. Before a future field migration,
+record each legacy file's path, mode and SHA-256, copy it to an operator-owned
+backup directory, update consumers, verify the new dispatcher, and retain a
+temporary compatibility alias only when an audited consumer still needs it.
 
 OCPP-CSMS trusted self-hosted simulator CI uses this same installer and validates the installed LCD runner, status publisher, and sound monitor; passing this check does not substitute for a physical I²C/audio field test.
 
@@ -39,7 +59,7 @@ OCPP-CSMS trusted self-hosted simulator CI uses this same installer and validate
 
 ```bash
 PYTHONPATH=. python3 -m pytest tests
-bash -n scripts/gway/codex-sound-hook scripts/gway/gway-event-sound-hotplug scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh scripts/gway/radio-play
+bash -n scripts/gway/codex-sound-hook scripts/gway/gway-event-sound-hotplug scripts/gway/gway-lcd-sound scripts/gway/gway-toggle-gpio-sound-mute scripts/gway/sound.sh scripts/gway/radio-play
 python3 -m py_compile scripts/gway/*.py
 ```
 
