@@ -53,3 +53,14 @@ def test_no_argument_wrappers_disabled_and_failure(tmp_path):
     for event in EVENTS:
         wrapper = ROOT / "scripts/gway" / f"codex-hook-{event}"
         assert subprocess.run(["bash", str(wrapper)], env=env, timeout=8).returncode == 0
+
+def test_disabled_does_not_dispatch(tmp_path):
+    log = tmp_path / "called"
+    player = tmp_path / "sound"
+    player.write_text('#!/bin/sh\ntouch "$SOUND_TEST_LOG"\n')
+    player.chmod(0o755)
+    env = {**os.environ, "GWAY_CODEX_SOUND_BIN": str(player),
+           "GWAY_CODEX_SOUND_DISABLED": "1", "SOUND_TEST_LOG": str(log)}
+    for event in EVENTS:
+        assert subprocess.run(["bash", str(HOOK), event], env=env, timeout=8).returncode == 0
+    assert not log.exists()
