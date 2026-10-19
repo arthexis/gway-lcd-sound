@@ -5,6 +5,9 @@ case "${1:-}" in
   SessionStart|UserPromptSubmit|PermissionRequest|PreCompact|PostCompact|SubagentStart|SubagentStop|Stop) event="$1" ;;
   *) exit 0 ;;
 esac
+case "${GWAY_CODEX_SOUND_DISABLED:-0}" in
+  1|true|TRUE|yes|YES|on|ON) exit 0 ;;
+esac
 sound_bin="${GWAY_CODEX_SOUND_BIN:-/usr/local/bin/sound}"
 if [[ ! -x "$sound_bin" ]]; then
   sound_bin="$(command -v sound 2>/dev/null || true)"
