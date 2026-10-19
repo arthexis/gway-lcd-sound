@@ -6,5 +6,5 @@ Type=oneshot
 User=arthe
 Group=arthe
 Environment=GWAY_EVENT_SOUND_VOLUME=0.21
-ExecStart=/home/arthe/.local/bin/gway-event-sound-hotplug %i
+ExecStart=/home/arthe/.local/bin/gway-lcd-sound hotplug %i
 NoNewPrivileges=true

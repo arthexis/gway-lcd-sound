@@ -8,7 +8,7 @@ lcd-commands \- local LCD lockfile display tools
 .B lcd-system-info-publisher
 .RI [ options ]
 .br
-.B gway-eth0-node-lcd-monitor
+.B gway-lcd-sound monitor eth0
 .RI [ options ]
 .SH DESCRIPTION
 The local LCD stack is independent of the Arthexis Python runtime. Producers
@@ -19,7 +19,7 @@ rotates those lockfiles onto the attached 16x2 LCD.
 .B lcd-system-info-publisher
 generates the normal ten-screen system-information rotation.
 .PP
-.B gway-eth0-node-lcd-monitor
+.B gway-lcd-sound monitor eth0
 can publish information about a node attached on eth0.
 .SH LOCKFILES
 The runner reads lockfiles from

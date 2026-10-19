@@ -8,6 +8,38 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts" / "gway"
 
 
+def test_release_owned_dispatcher_help_and_contracts(tmp_path):
+    command = SCRIPTS / "gway-lcd-sound"
+    help_result = subprocess.run(["bash", str(command), "--help"], capture_output=True, text=True, timeout=5)
+    assert help_result.returncode == 0
+    assert "monitor eth0" in help_result.stdout
+
+    invalid = subprocess.run(["bash", str(command), "monitor", "wlan0"], capture_output=True, text=True, timeout=5)
+    assert invalid.returncode == 64
+
+    monitor_help = subprocess.run(
+        ["bash", str(command), "monitor", "eth0", "--help"], capture_output=True, text=True, timeout=5
+    )
+    assert monitor_help.returncode == 0
+    assert "--interval" in monitor_help.stdout
+
+    mute_status = subprocess.run(
+        ["bash", str(command), "mute", "toggle", "--status"],
+        env={**os.environ, "XDG_RUNTIME_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert mute_status.returncode == 0
+    assert mute_status.stdout.strip() == "unmuted"
+
+    notify_help = subprocess.run(
+        ["bash", str(command), "notify", "--help"], capture_output=True, text=True, timeout=5
+    )
+    assert notify_help.returncode == 0
+    assert "--attach" in notify_help.stdout
+
+
 def test_lcd_runner_rejects_invalid_flag():
     result = subprocess.run([sys.executable, str(SCRIPTS / "lcd_lockfile_runner.py"), "--does-not-exist"],
                             capture_output=True, text=True, timeout=5)

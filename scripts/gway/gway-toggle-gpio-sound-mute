@@ -9,6 +9,30 @@ lcd_dir="/home/arthe/.local/state/lcd-lockfiles"
 lcd_event_id=11
 card_id="${RFID_MODE_CARD_ID:-${RFID_CARD_ID:-}}"
 
+usage() {
+  echo "Usage: gway-toggle-gpio-sound-mute [--status]" >&2
+}
+
+case "${1:-}" in
+  "") ;;
+  --status)
+    if [[ -e "$mute_file" ]]; then
+      printf 'muted\n'
+    else
+      printf 'unmuted\n'
+    fi
+    exit 0
+    ;;
+  --help|-h)
+    usage
+    exit 0
+    ;;
+  *)
+    usage
+    exit 64
+    ;;
+esac
+
 timestamp() {
   date --iso-8601=seconds 2>/dev/null || date
 }
