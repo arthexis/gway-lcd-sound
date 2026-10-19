@@ -364,7 +364,7 @@ def play_pattern(name, *, pin, volume, backend, device, dry_run=False):
     pattern = PATTERNS[name]
     if dry_run:
         steps = " ".join(f"{freq}Hz/{duration * 1000:.0f}ms" for freq, duration, _pause in pattern)
-        print(f"{name}: {DESCRIPTIONS[name]} - {steps} backend={backend} device={device or 'default'}")
+        print(f"{name}: {DESCRIPTIONS.get(name, 'source motif')} - {steps} backend={backend} device={device or 'default'}")
         return
     if backend == "auto":
         backend = "gpio"
