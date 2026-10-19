@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Release-owned, best-effort Codex lifecycle sound adapter.
+set -u
+case "${1:-}" in
+  SessionStart|UserPromptSubmit|PermissionRequest|PreCompact|PostCompact|SubagentStart|SubagentStop|Stop) event="$1" ;;
+  *) exit 0 ;;
+esac
+sound_bin="${GWAY_CODEX_SOUND_BIN:-/usr/local/bin/sound}"
+if [[ ! -x "$sound_bin" ]]; then
+  sound_bin="$(command -v sound 2>/dev/null || true)"
+fi
+[[ -n "$sound_bin" && -x "$sound_bin" ]] || exit 0
+if command -v timeout >/dev/null 2>&1; then
+  timeout 5 "$sound_bin" --event "$event" --source codex >/dev/null 2>&1 || true
+else
+  "$sound_bin" --event "$event" --source codex >/dev/null 2>&1 || true
+fi
+exit 0
