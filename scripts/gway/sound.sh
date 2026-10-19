@@ -478,9 +478,17 @@ def event_database(path=DEFAULT_EVENT_DB):
         (
             ("codex", json.dumps([[659, 0.07, 0.04], [988, 0.09, 0.0]]), 45),
             ("wifi", json.dumps([[523, 0.06, 0.035], [784, 0.06, 0.0]]), 45),
-            ("github-actions", json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45),
+            ("github", json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45),
         ),
     )
+    # Preserve an existing customized Actions motif when upgrading its identity.
+    legacy = connection.execute("SELECT notes, cooldown_seconds FROM motifs WHERE source='github-actions'").fetchone()
+    if legacy:
+        default_github = (json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45)
+        current_github = connection.execute("SELECT notes, cooldown_seconds FROM motifs WHERE source='github'").fetchone()
+        if current_github == default_github:
+            connection.execute("UPDATE motifs SET notes=?, cooldown_seconds=? WHERE source='github'", legacy)
+        connection.execute("DELETE FROM motifs WHERE source='github-actions'")
     connection.commit()
     return connection
 
@@ -513,7 +521,13 @@ def resolve_event(source, event, db):
 
 
 
+def motif_identity(source):
+    source = (source or "").strip().lower()
+    return "github" if source == "github" or source.startswith("github-") else source
+
+
 def motif_for(source, db):
+    source = motif_identity(source)
     row = db.execute("SELECT notes, cooldown_seconds FROM motifs WHERE source=?", (source,)).fetchone()
     if not row:
         return None
@@ -534,7 +548,7 @@ def play_event(resolved, args):
     """Serialize source motif and event as one unit; commit context after motif playback."""
     if resolved["sound"] is None:
         return
-    source = resolved["source"]
+    source = motif_identity(resolved["source"])
     db_path = os.path.abspath(args.event_db)
     lock_path = os.path.join(os.path.dirname(db_path), "motif-play.lock")
     with open(lock_path, "a+b") as lock:
