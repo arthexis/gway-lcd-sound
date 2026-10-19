@@ -173,3 +173,7 @@ The installer does **not** activate runner hooks or modify the runner service. P
 trusted runner-side producer to emit `sound --event started --source github-actions`
 and `sound --event stopped --source github-actions`. Do not claim audible
 runner notifications until those hooks are installed and field-tested.
+
+## Codex lifecycle integration
+
+Codex lifecycle hooks invoke the existing `sound --event EVENT --source codex` directly, with a static event per configured hook. No new executable wrappers are installed. See [Codex sound integration](docs/codex-sound.md) for the eight-event mapping, preview and opt-in policy.
