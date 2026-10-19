@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# Installed release-owned no-argument Codex lifecycle hook.
-"$(dirname "$0")/codex-lifecycle-sound" PostCompact || true
-exit 0
