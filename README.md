@@ -160,10 +160,9 @@ the producer. Codex lifecycle configuration and any remaining Actions-runner
 call sites still need their own audit and migration; this first pass does not
 modify the installed Codex runtime or remove its legacy hook.
 
-## GitHub Actions runner motif
+## Shared GitHub motif
 
-The `github-actions` source has its own ascending three-note motif (392, 587,
-and 784 Hz) with a 45-second context cooldown. Existing `started` and
+The `github` motif is shared by `github-actions` and future `github-*` sources. Its three-note melody and 45-second cooldown are unchanged. Event mappings remain source-specific. Existing `started` and
 `stopped` event mappings use the `notice` and `warning` earcons respectively.
 The motif is seeded idempotently for both new and existing event databases;
 customized motif rows are never overwritten.
