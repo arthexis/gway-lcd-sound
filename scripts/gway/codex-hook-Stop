@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# Installed release-owned no-argument Codex lifecycle hook.
-"$(dirname "$0")/codex-lifecycle-sound" Stop || true
-exit 0
