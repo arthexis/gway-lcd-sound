@@ -42,7 +42,7 @@ verify() {
   resolve_current || { echo "No active LCD Sound release" >&2; return 1; }
   for pair in "${commands[@]}"; do
     local cmd="${pair%%:*}" file="${pair#*:}"
-    [[ -x "$bin_dir/$cmd" && -f "$current/scripts/gway/$file" ]] || {
+    [[ -L "$bin_dir/$cmd" && "$(readlink "$bin_dir/$cmd")" == "$current/scripts/gway/$file" && -x "$bin_dir/$cmd" && -f "$current/scripts/gway/$file" ]] || {
       echo "Missing installed command: $cmd" >&2; return 1;
     }
   done
