@@ -20,10 +20,15 @@ sound --event SessionStart --source codex --dry-run
 bash scripts/deploy/install.sh verify --no-restart
 ```
 
-**Codex configuration:** Only register a hook after verifying that the
-installed Codex version supports that lifecycle event and its hook command
-arguments. The adapter requires one event-name argument; if the host invokes
-no-argument commands, a separate release-owned wrapper is required.
+**Codex configuration:** The release installs eight no-argument wrappers:
+`codex-hook-SessionStart`, `codex-hook-UserPromptSubmit`,
+`codex-hook-PermissionRequest`, `codex-hook-PreCompact`,
+`codex-hook-PostCompact`, `codex-hook-SubagentStart`,
+`codex-hook-SubagentStop`, and `codex-hook-Stop`.
+Each forwards the fixed event to the shared adapter. Register only events
+supported by the installed Codex version; confirm its actual hook syntax
+on Gway-001 before changing the user configuration. A version-specific
+reviewable TOML fragment should be prepared after that verification.
 Do not copy unmanaged `codex-hook-*` or mode wrappers into `~/.local/bin`.
 No automatic config mutation is performed.
 
