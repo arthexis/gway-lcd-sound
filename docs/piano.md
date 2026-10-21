@@ -20,7 +20,7 @@ Interactive controls:
 - A W S E D F T G Y H U J K: piano keys; each key plays immediately.
 - R: toggle recording. Recorded keypresses insert sequential notes.
 - - / =: change octave; [ / ]: change new note duration by 10 ms;
-  , / .: change following pause by 10 ms.
+  , / .: change default following pause by 10 ms.\n- 1 / 2: reduce/increase the selected note duration by 10 ms;\n  3 / 4: reduce/increase its following pause by 10 ms.
 - Left / Right: select step; Up / Down: transpose selected step by one semitone.
 - Shift+I: insert rest, Shift+X: delete selected step, Shift+U: undo.
 - Space: preview sequence, Shift+S: save motif/event sound,
