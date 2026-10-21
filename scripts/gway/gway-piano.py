@@ -150,7 +150,8 @@ class Editor:
           f"Octave: {self.octave}  Duration: {self.duration} ms  Pause: {self.pause} ms  Record: {'ON' if self.record else 'OFF'}",
           "Keyboard: A W S E D F T G Y H U J K  |  -/= octave  |  R record",
           "Arrows: select note; Up/Down pitch semitone  |  [/] duration +/-10 ms",
-          ",/. pause +/-10 ms | Shift+I rest | Shift+X remove | Shift+U undo",
+          ",/. new pause | 1/2 selected duration | 3/4 selected pause (10 ms)",
+          "Shift+I rest | Shift+X remove | Shift+U undo",
           "Space play | Shift+S save | Shift+O export | Shift+L import | ? help | Shift+Q quit",
           "",
           " #   NOTE       FREQUENCY (Hz)   DURATION (ms)   PAUSE (ms)",
@@ -194,6 +195,14 @@ class Editor:
                     self.duration=max(10,min(400,self.duration+(-10 if key==ord("[") else 10)))
                 elif key in (ord(","),ord(".")):
                     self.pause=max(0,min(400,self.pause+(-10 if key==ord(",") else 10)))
+                elif key in (ord("1"),ord("2"),ord("3"),ord("4")) and self.notes:
+                    idx=1 if key in (ord("1"),ord("2")) else 2
+                    step=-0.01 if key in (ord("1"),ord("3")) else 0.01
+                    previous=self.notes[self.cursor][idx]
+                    updated=round(previous+step, 3)
+                    lower=0.01 if idx==1 else 0.0
+                    if lower<=updated<=0.4:
+                        self.snapshot();self.notes[self.cursor][idx]=updated
                 elif key in (ord("I"),):
                     self.insert(0)
                 elif key in (ord("X"),curses.KEY_BACKSPACE,127):
