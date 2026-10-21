@@ -10,7 +10,7 @@ Commands:
   monitor eth0 [OPTIONS]       Run the Ethernet LCD monitor.
   hotplug EVENT                Play the event sound for a hotplug event.
   mute toggle [--status]       Toggle, or inspect, GPIO sound mute state.
-  notify [OPTIONS]             Send a system notification.
+  piano [OPTIONS]             Compose and edit motifs/event sounds.\n  notify [OPTIONS]             Send a system notification.
 
 Each command replaces the corresponding legacy helper.  See gway-lcd-sound(1).
 EOF
@@ -47,6 +47,10 @@ case "$command" in
     [[ "${2:-}" == "toggle" ]] || { usage >&2; exit 64; }
     shift 2
     exec "$script_dir/gway-toggle-gpio-sound-mute" "$@"
+    ;;
+  piano)
+    shift
+    exec python3 "$script_dir/gway-piano.py" "$@"
     ;;
   notify)
     shift
