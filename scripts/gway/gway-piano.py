@@ -51,7 +51,9 @@ def db_open(path):
         raise ValueError("event database directory must be private")
     if path.is_symlink():
         raise ValueError("database cannot be a symlink")
+    created = not path.exists()
     conn = sqlite3.connect(path)
+    if created: os.chmod(path, 0o600)
     if path.stat().st_mode & 0o077:
         conn.close()
         raise ValueError("database permissions must be 0600")
@@ -148,8 +150,8 @@ class Editor:
           f"Octave: {self.octave}  Duration: {self.duration} ms  Pause: {self.pause} ms  Record: {'ON' if self.record else 'OFF'}",
           "Keyboard: A W S E D F T G Y H U J K  |  -/= octave  |  R record",
           "Arrows: select note; Up/Down pitch semitone  |  [/] duration +/-10 ms",
-          ",/. pause +/-10 ms | I insert rest | X remove | U undo",
-          "Space play | S save | O export | L import | ? help | Q quit",
+          ",/. pause +/-10 ms | Shift+I rest | Shift+X remove | Shift+U undo",
+          "Space play | Shift+S save | Shift+O export | Shift+L import | ? help | Shift+Q quit",
           "",
           " #   NOTE       FREQUENCY (Hz)   DURATION (ms)   PAUSE (ms)",
         ]
@@ -192,12 +194,12 @@ class Editor:
                     self.duration=max(10,min(400,self.duration+(-10 if key==ord("[") else 10)))
                 elif key in (ord(","),ord(".")):
                     self.pause=max(0,min(400,self.pause+(-10 if key==ord(",") else 10)))
-                elif key in (ord("i"),):
+                elif key in (ord("I"),):
                     self.insert(0)
-                elif key in (ord("x"),curses.KEY_BACKSPACE,127):
+                elif key in (ord("X"),curses.KEY_BACKSPACE,127):
                     if self.notes:
                         self.snapshot();self.notes.pop(self.cursor);self.cursor=max(0,min(self.cursor,len(self.notes)-1))
-                elif key in (ord("u"),):
+                elif key in (ord("U"),):
                     if self.undo:
                         self.notes=self.undo.pop();self.cursor=max(0,min(self.cursor,len(self.notes)-1))
                 elif key in (curses.KEY_UP,curses.KEY_DOWN) and self.notes:
@@ -209,7 +211,7 @@ class Editor:
                             self.snapshot();self.notes[self.cursor][0]=hz
                 elif key==ord(" "):
                     if self.notes: play(self.notes,self.args)
-                elif key==ord("s"):
+                elif key==ord("S"):
                     if not self.notes: continue
                     kind=self.prompt(scr,"Type motif or sound",self.args.kind)
                     if kind not in ("motif","sound"): raise ValueError("type must be motif or sound")
@@ -220,10 +222,10 @@ class Editor:
                     self.message=f"Saved {kind} {name}"
                     self.args.load=name
                     self.args.kind=kind
-                elif key==ord("o"):
+                elif key==ord("O"):
                     export_file(self.prompt(scr,"Export new JSON filename","composition.json"),self.notes)
                     self.message="Exported"
-                elif key==ord("l"):
+                elif key==ord("L"):
                     self.snapshot()
                     self.notes=import_file(self.prompt(scr,"JSON file path"))
                     self.cursor=0
