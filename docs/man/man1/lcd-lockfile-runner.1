@@ -37,7 +37,11 @@ Print the selected frame instead of writing hardware or fallback state.
 Latest rendered frame.
 .TP
 .I /home/arthe/.local/state/lcd-lockfile-runner/lcd-history.ndjson
-Rendered frame history.
+Rendered frame-transition history. Repeated render-loop writes of an unchanged
+frame are not recorded. The journal is capped at 2 MiB; once over that size,
+the runner atomically retains its newest 10,000 entries. Run
+.B lcd-lockfile-runner --compact-history
+to trim an existing oversized journal without accessing the I2C bus.
 .TP
 .I /home/arthe/.local/state/lcd-lockfile-runner/lcd-lockfile-runner.log
 Runner log.
