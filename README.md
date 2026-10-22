@@ -196,3 +196,10 @@ runner notifications until those hooks are installed and field-tested.
 ## Codex lifecycle integration
 
 Codex lifecycle hooks invoke the existing `sound --event EVENT --source codex` directly, with a static event per configured hook. No new executable wrappers are installed. See [Codex sound integration](docs/codex-sound.md) for the eight-event mapping, preview and opt-in policy.
+
+## Local piano composer
+
+Run `gway-lcd-sound piano` on GWay-001 to edit a monophonic motif or event sound.
+The terminal shows precise Hz, note duration in ms and pause in ms.
+See [Piano CLI documentation](docs/piano.md) for keyboard controls,
+persistence, import/export and deployment caveats.

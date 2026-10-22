@@ -218,7 +218,7 @@ def render_wave(path, pattern, volume):
             frames = bytearray()
             for index in range(tone_samples):
                 envelope = sample_envelope(index, tone_samples)
-                sample = int(amplitude * envelope * math.sin(2 * math.pi * frequency * index / SAMPLE_RATE))
+                sample = int(amplitude * envelope * math.sin(2 * math.pi * frequency * index / SAMPLE_RATE)) if frequency > 0 else 0
                 frames.extend(struct.pack("<h", sample) * CHANNELS)
             wav.writeframes(frames)
             pause_samples = int(SAMPLE_RATE * pause)
@@ -468,6 +468,7 @@ def event_database(path=DEFAULT_EVENT_DB):
     connection.execute("CREATE TABLE IF NOT EXISTS events (source TEXT NOT NULL, event TEXT NOT NULL, sound TEXT NOT NULL, PRIMARY KEY(source, event))")
     connection.execute("CREATE TABLE IF NOT EXISTS aliases (source TEXT NOT NULL, alias TEXT NOT NULL, event TEXT NOT NULL, PRIMARY KEY(source, alias))")
     connection.execute("CREATE TABLE IF NOT EXISTS motifs (source TEXT PRIMARY KEY, notes TEXT NOT NULL, cooldown_seconds REAL NOT NULL DEFAULT 45)")
+    connection.execute("CREATE TABLE IF NOT EXISTS sounds (name TEXT PRIMARY KEY, notes TEXT NOT NULL)")
     connection.execute("CREATE TABLE IF NOT EXISTS motif_context (slot INTEGER PRIMARY KEY CHECK(slot=1), source TEXT NOT NULL, played_at REAL NOT NULL)")
     if created:
         connection.executemany("INSERT OR IGNORE INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
@@ -493,6 +494,34 @@ def event_database(path=DEFAULT_EVENT_DB):
     return connection
 
 
+def custom_pattern(name, db):
+    row = db.execute("SELECT notes FROM sounds WHERE name=?", (name,)).fetchone()
+    if not row:
+        return None
+    try:
+        pattern = tuple((float(hz), float(duration), float(pause)) for hz, duration, pause in json.loads(row[0]))
+        if not pattern or len(pattern) > 12 or any(
+            not math.isfinite(hz) or not math.isfinite(duration) or not math.isfinite(pause)
+            or (hz != 0 and not 80 <= hz <= 4000)
+            or not 0.01 <= duration <= 0.4 or not 0 <= pause <= 0.4
+            for hz,duration,pause in pattern
+        ):
+            raise ValueError("invalid custom pattern")
+        return pattern
+    except (ValueError, TypeError) as exc:
+        raise ValueError("invalid custom sound") from exc
+
+
+def play_custom(name, pattern, args):
+    private = "__custom_preview__"
+    PATTERNS[private] = pattern
+    try:
+        play_pattern(private, pin=args.pin, volume=args.volume,
+                     backend=args.backend, device=args.device, dry_run=args.dry_run)
+    finally:
+        PATTERNS.pop(private, None)
+
+
 def resolve_event(source, event, db):
     """Explicit source mapping, then global mapping; aliases are source-scoped."""
     source = (source or "").strip().lower()
@@ -512,7 +541,7 @@ def resolve_event(source, event, db):
         row = db.execute("SELECT sound FROM events WHERE source=? AND event=?",
                          (owner, event)).fetchone()
         if row:
-            if row[0] not in PATTERNS:
+            if row[0] not in PATTERNS and custom_pattern(row[0], db) is None:
                 raise ValueError("event maps to an unavailable sound")
             return {"source": source, "event": event, "sound": row[0],
                     "matched_source": owner}
@@ -580,8 +609,12 @@ def play_event(resolved, args):
                 print(json.dumps({"source": source, "event": resolved["event"],
                                   "motif": announce, "sound": resolved["sound"]}, sort_keys=True))
             else:
-                play_pattern(resolved["sound"], pin=args.pin, volume=args.volume,
-                             backend=args.backend, device=args.device)
+                custom = custom_pattern(resolved["sound"], db)
+                if custom is not None:
+                    play_custom(resolved["sound"], custom, args)
+                else:
+                    play_pattern(resolved["sound"], pin=args.pin, volume=args.volume,
+                                 backend=args.backend, device=args.device)
 
 
 def list_sounds():
@@ -600,6 +633,7 @@ def build_parser():
         default="list",
         help="sound name, list, all, or test",
     )
+    parser.add_argument("--pattern-json", help="Internal: preview a validated JSON pattern without saving")
     parser.add_argument("--motif", help="Explicit motif to play before a sound; bypasses event cooldown")
     parser.add_argument("--list-motifs", action="store_true", help="Print installed motif names as JSON")
     parser.add_argument("--event", help="Producer-owned event name")
@@ -621,6 +655,23 @@ def main(argv):
     args.volume = clamp(args.volume, 0.0, 1.0)
     args.pause = clamp(args.pause, 0.0, 3.0)
     args.backend = (args.backend or "auto").strip().lower()
+    if args.pattern_json:
+        if args.event or args.motif or args.resolve:
+            parser.error("--pattern-json cannot be combined with event or motif playback")
+        try:
+            raw = json.loads(args.pattern_json)
+            pattern = tuple((float(a),float(b),float(c)) for a,b,c in raw)
+            if not pattern or len(pattern)>12 or any(
+                not all(math.isfinite(v) for v in note)
+                or (note[0]!=0 and not 80<=note[0]<=4000)
+                or not 0.01<=note[1]<=0.4 or not 0<=note[2]<=0.4
+                for note in pattern
+            ):
+                raise ValueError("invalid preview notes")
+            play_custom("preview", pattern, args)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            parser.error(str(exc))
+        return 0
     if args.list_motifs:
         if args.event or args.motif or args.sound != "list":
             parser.error("--list-motifs cannot be combined with playback")
@@ -660,7 +711,9 @@ def main(argv):
             if not args.dry_run and args.pause > 0:
                 time.sleep(args.pause)
         return 0
-    if requested not in PATTERNS:
+    with event_database(args.event_db) as db:
+        custom = custom_pattern(requested, db)
+    if requested not in PATTERNS and custom is None:
         parser.error(f"unknown sound: {requested}")
     if args.motif:
         with event_database(args.event_db) as db:
@@ -676,12 +729,16 @@ def main(argv):
             try:
                 play_pattern(private_name, pin=args.pin, volume=args.volume,
                              backend=args.backend, device=args.device, dry_run=args.dry_run)
-                play_pattern(requested, pin=args.pin, volume=args.volume,
-                             backend=args.backend, device=args.device, dry_run=args.dry_run)
+                (play_custom(requested, custom, args) if custom is not None else
+                 play_pattern(requested, pin=args.pin, volume=args.volume,
+                              backend=args.backend, device=args.device, dry_run=args.dry_run))
             finally:
                 PATTERNS.pop(private_name, None)
     else:
-        play_pattern(requested, pin=args.pin, volume=args.volume, backend=args.backend, device=args.device, dry_run=args.dry_run)
+        if custom is not None:
+            play_custom(requested, custom, args)
+        else:
+            play_pattern(requested, pin=args.pin, volume=args.volume, backend=args.backend, device=args.device, dry_run=args.dry_run)
     return 0
 
 
