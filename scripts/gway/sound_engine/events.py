@@ -89,6 +89,22 @@ def process_changes(previous: dict[str, Any], current: dict[str, Any], runtime: 
         if changed:
             play("lcd-important", "lcd-important", ",".join(sorted(changed)), dry_run=dry_run)
 
+    old_display = previous.get("lcd_display") or {}
+    new_display = current.get("lcd_display") or {}
+    if (
+        new_display.get("source") not in {None, "", "normal"}
+        and (
+            old_display.get("source") != new_display.get("source")
+            or old_display.get("origin") != new_display.get("origin")
+        )
+    ):
+        play(
+            "lcd-external-change",
+            "notice",
+            new_display["source"],
+            dry_run=dry_run,
+        )
+
     if previous.get("feedback_files") != current.get("feedback_files"):
         old = previous.get("feedback_files") or {}
         new = current.get("feedback_files") or {}

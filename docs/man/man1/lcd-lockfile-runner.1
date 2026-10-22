@@ -36,6 +36,11 @@ Print the selected frame instead of writing hardware or fallback state.
 .I /home/arthe/.local/state/lcd-lockfile-runner/lcd-screen.txt
 Latest rendered frame.
 .TP
+.I /home/arthe/.local/state/lcd-lockfile-runner/lcd-current.json
+Last confirmed hardware write, including the display source and origin. The
+event-sound monitor uses this record to distinguish external takeovers from
+normal rotation without reacting to scroll updates.
+.TP
 .I /home/arthe/.local/state/lcd-lockfile-runner/lcd-history.ndjson
 Rendered frame-transition history. Repeated render-loop writes of an unchanged
 frame are not recorded. The journal is capped at 2 MiB; once over that size,

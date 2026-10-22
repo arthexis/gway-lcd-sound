@@ -12,6 +12,12 @@ STATE_DIR = Path(os.environ.get("GWAY_EVENT_SOUND_STATE_DIR", BASE / ".local/sta
 STATE_FILE = STATE_DIR / "state.json"
 LOG_FILE = STATE_DIR / "events.log"
 SOUND_HOOK = Path(os.environ.get("GWAY_EVENT_SOUND_SOUND_BIN", os.environ.get("GWAY_EVENT_SOUND_HOOK", "/usr/local/bin/sound")))
+LCD_CURRENT_FRAME_FILE = Path(
+    os.environ.get(
+        "GWAY_EVENT_SOUND_LCD_CURRENT_FRAME",
+        BASE / ".local/state/lcd-lockfile-runner/lcd-current.json",
+    )
+)
 UPGRADE_IN_PROGRESS_LOCK = SUITE / ".locks/upgrade_in_progress.lck"
 UPGRADE_DURATION_LOCK = SUITE / ".locks/upgrade_duration.lck"
 AP_IFACE = os.environ.get("GWAY_EVENT_SOUND_AP_IFACE", "wlan0")

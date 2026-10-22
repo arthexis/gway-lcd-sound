@@ -437,6 +437,7 @@ DEFAULT_EVENTS = (
     ("gway-monitor", "usb-connect", "attention"),
     ("gway-monitor", "usb-disconnect", "warning"),
     ("gway-monitor", "lcd-important", "attention"),
+    ("gway-monitor", "lcd-external-change", "notice"),
     ("gway-monitor", "feedback-lock", "attention"),
     ("gway-monitor", "repo-upgrade-start", "busy"),
     ("gway-monitor", "repo-upgrade-complete", "ok"),
@@ -479,6 +480,7 @@ def event_database(path=DEFAULT_EVENT_DB):
         "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
         (
             ("codex", json.dumps([[659, 0.07, 0.04], [988, 0.09, 0.0]]), 45),
+            ("gway-monitor", json.dumps([[330, 0.055, 0.025], [494, 0.055, 0.025], [659, 0.085, 0.0]]), 45),
             ("ssh", json.dumps([[440, 0.06, 0.035], [659, 0.08, 0.0]]), 60),
             ("wifi", json.dumps([[523, 0.06, 0.035], [784, 0.06, 0.0]]), 45),
             ("github", json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45),

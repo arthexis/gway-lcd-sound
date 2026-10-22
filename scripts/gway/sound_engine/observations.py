@@ -204,6 +204,21 @@ def file_signature(path: Path) -> str:
     return f"{stat.st_mtime_ns}:{stat.st_size}"
 
 
+def lcd_display_state() -> dict[str, str]:
+    """Return confirmed display ownership, excluding routine frame/scroll text."""
+    try:
+        frame = json.loads(LCD_CURRENT_FRAME_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(frame, dict):
+        return {}
+    source = frame.get("source")
+    origin = frame.get("origin")
+    if not isinstance(source, str) or not isinstance(origin, str):
+        return {}
+    return {"source": source, "origin": origin}
+
+
 def upgrade_state() -> dict[str, Any]:
     duration_signature = file_signature(UPGRADE_DURATION_LOCK)
     duration_payload: dict[str, Any] = {}
@@ -294,6 +309,7 @@ def snapshot() -> dict[str, Any]:
                 ".locks/lcd-important*",
             ]
         ),
+        "lcd_display": lcd_display_state(),
         "feedback_files": file_signatures(
             [
                 ".locks/operator-local-feedback.jsonl",
