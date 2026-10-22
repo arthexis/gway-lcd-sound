@@ -368,7 +368,15 @@ class Runner:
     def frame_for_payload(self, payload: Payload, step: int) -> tuple[str, str]:
         return scroll_segment(payload.line1, step), scroll_segment(payload.line2, step)
 
-    def write_frame(self, line1: str, line2: str, label: str) -> None:
+    def write_frame(
+        self,
+        line1: str,
+        line2: str,
+        label: str,
+        *,
+        source: str = "normal",
+        origin: str = "",
+    ) -> None:
         row1 = line1[:COLUMNS].ljust(COLUMNS)
         row2 = line2[:COLUMNS].ljust(COLUMNS)
         WORK_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -395,13 +403,18 @@ class Runner:
             return
         try:
             self.lcd.write_frame(row1, row2)
-            frame = {"ts": datetime.now(timezone.utc).isoformat(),
-                     "label": label, "line1": row1, "line2": row2}
-            current_path = WORK_FILE.with_name("lcd-current.json")
-            temp = current_path.with_suffix(f".{os.getpid()}.tmp")
+            frame = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "label": label,
+                "line1": row1,
+                "line2": row2,
+                "source": source,
+                "origin": origin,
+            }
+            temp = CURRENT_FRAME_FILE.with_suffix(f".{os.getpid()}.tmp")
             try:
                 temp.write_text(json.dumps(frame, sort_keys=True) + "\n", encoding="utf-8")
-                os.replace(temp, current_path)
+                os.replace(temp, CURRENT_FRAME_FILE)
             finally:
                 temp.unlink(missing_ok=True)
         except Exception as exc:
@@ -445,12 +458,20 @@ class Runner:
         self.configure_order()
         runner = active_runner_payload(self.lock_dirs, now=now)
         event = self.active_event(now) if runner is None else None
-        payload = self.undervoltage_payload() or runner or (self.event_payload(event) if event else self.current_payload(now))
+        warning = self.undervoltage_payload()
+        payload = warning or runner or (self.event_payload(event) if event else self.current_payload(now))
+        source = "warning" if warning else "runner" if runner else "event" if event else "normal"
         line1, line2 = self.frame_for_payload(payload, 0)
         if self.args.dry_run:
             print(f"{payload.label}: {line1!r} / {line2!r}")
         else:
-            self.write_frame(line1, line2, payload.label)
+            self.write_frame(
+                line1,
+                line2,
+                payload.label,
+                source=source,
+                origin=str(payload.source) if payload.source else payload.label,
+            )
         return 0
 
     def run_forever(self) -> int:
@@ -489,7 +510,13 @@ class Runner:
                 warning = self.undervoltage_payload()
                 shown = warning or choice.payload
                 line1, line2 = self.frame_for_payload(shown, 0 if warning else choice.scroll_step)
-                self.write_frame(line1, line2, shown.label)
+                self.write_frame(
+                    line1,
+                    line2,
+                    shown.label,
+                    source="warning" if warning else choice.source,
+                    origin=str(shown.source) if shown.source else shown.label,
+                )
                 if choice.advance_normal:
                     if self.order:
                         self.order_index = (self.order_index + 1) % len(self.order)

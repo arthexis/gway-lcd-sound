@@ -10,23 +10,32 @@ def test_fake_lcd_records_exact_padded_rows(tmp_path, monkeypatch, lcd_module, f
     monkeypatch.setattr(lcd_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(lcd_module, "WORK_FILE", tmp_path / "lcd-screen.txt")
     monkeypatch.setattr(lcd_module, "HISTORY_FILE", tmp_path / "lcd-history.ndjson")
+    monkeypatch.setattr(lcd_module, "CURRENT_FRAME_FILE", tmp_path / "lcd-current.json")
     runner = lcd_module.Runner(argparse.Namespace(
         lock_dir=[str(tmp_path)], no_hardware=True,
     ))
     runner.lcd = fake_lcd
-    runner.write_frame("Run PR #142", "feature/very-long-branch", "actions-runner")
+    runner.write_frame(
+        "Run PR #142",
+        "feature/very-long-branch",
+        "actions-runner",
+        source="runner",
+        origin="lcd-actions-runner.lck",
+    )
     assert fake_lcd.frames == [
         ("Run PR #142".ljust(16), "feature/very-long-branch"[:16])
     ]
     assert (tmp_path / "lcd-screen.txt").read_text().splitlines() == [
         "Run PR #142".ljust(16), "feature/very-long-branch"[:16]
     ]
+    assert (tmp_path / "lcd-current.json").read_text().count('"source": "runner"') == 1
 
 
 def test_history_records_frame_transitions_only(tmp_path, monkeypatch, lcd_module, fake_lcd):
     monkeypatch.setattr(lcd_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(lcd_module, "WORK_FILE", tmp_path / "lcd-screen.txt")
     monkeypatch.setattr(lcd_module, "HISTORY_FILE", tmp_path / "lcd-history.ndjson")
+    monkeypatch.setattr(lcd_module, "CURRENT_FRAME_FILE", tmp_path / "lcd-current.json")
     runner = lcd_module.Runner(argparse.Namespace(lock_dir=[str(tmp_path)], no_hardware=True))
     runner.lcd = fake_lcd
 

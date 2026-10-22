@@ -437,6 +437,7 @@ DEFAULT_EVENTS = (
     ("gway-monitor", "usb-connect", "attention"),
     ("gway-monitor", "usb-disconnect", "warning"),
     ("gway-monitor", "lcd-important", "attention"),
+    ("gway-monitor", "lcd-external-change", "notice"),
     ("gway-monitor", "feedback-lock", "attention"),
     ("gway-monitor", "repo-upgrade-start", "busy"),
     ("gway-monitor", "repo-upgrade-complete", "ok"),

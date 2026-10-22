@@ -64,3 +64,21 @@ def test_state_write_is_atomic_and_recoverable(tmp_path, monkeypatch):
     state.save_state({"runtime": {"last_thermal_level": "warm"}})
     assert '"warm"' in (tmp_path / "state.json").read_text()
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_external_lcd_takeover_emits_once_without_rotation_noise(monkeypatch):
+    emitted = []
+    monkeypatch.setattr(events, "play", lambda event, sound, detail="", *, dry_run=False: emitted.append((event, sound, detail)))
+    baseline = {
+        "lcd_display": {"source": "normal", "origin": "clock"},
+        "thermal": {"level": "normal"},
+        "undervoltage": {"active": False},
+    }
+    runner = {**baseline, "lcd_display": {"source": "runner", "origin": "lcd-actions-runner.lck"}}
+    runtime = {}
+
+    events.process_changes(baseline, runner, runtime, dry_run=True)
+    events.process_changes(runner, runner, runtime, dry_run=True)
+    events.process_changes(runner, {**runner, "lcd_display": {"source": "normal", "origin": "clock"}}, runtime, dry_run=True)
+
+    assert emitted == [("lcd-external-change", "notice", "runner")]
