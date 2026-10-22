@@ -52,6 +52,12 @@ WORK_FILE = STATE_DIR / "lcd-screen.txt"
 HISTORY_FILE = STATE_DIR / "lcd-history.ndjson"
 CURRENT_FRAME_FILE = STATE_DIR / "lcd-current.json"
 
+# History is for operator review, not a high-rate trace of the render loop.
+# Retain transitions only, and bound the on-disk journal if a producer emits
+# unusually frequent distinct frames.
+HISTORY_MAX_BYTES = 2 * 1024 * 1024
+HISTORY_RETAIN_ENTRIES = 10_000
+
 DEFAULT_ORDER = ("high", "low", "stats", "clock")
 
 
@@ -72,6 +78,45 @@ def log(message: str, **fields: object) -> None:
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def compact_history(
+    path: Path | None = None,
+    *,
+    max_bytes: int = HISTORY_MAX_BYTES,
+    retain_entries: int = HISTORY_RETAIN_ENTRIES,
+) -> int:
+    """Atomically retain the newest history entries when a journal is too large."""
+    if path is None:
+        path = HISTORY_FILE
+    try:
+        original_stat = path.stat()
+    except FileNotFoundError:
+        return 0
+    except OSError as exc:
+        log("history-stat-failed", path=str(path), error=str(exc))
+        return 0
+    if original_stat.st_size <= max_bytes:
+        return 0
+
+    try:
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            with temporary.open("w", encoding="utf-8") as target:
+                subprocess.run(
+                    ["tail", "-n", str(retain_entries), str(path)],
+                    stdout=target,
+                    check=True,
+                )
+            os.chmod(temporary, original_stat.st_mode)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        log("history-compact-failed", path=str(path), error=str(exc))
+        return 0
+    with path.open(encoding="utf-8") as retained:
+        return sum(1 for _ in retained)
 
 
 configure_logger(log)
@@ -143,6 +188,7 @@ class Runner:
         self.lcd = None
         self.bus = None
         self.last_hardware_attempt = 0.0
+        self.last_history_frame: tuple[str, str, str] | None = None
         self.undervoltage = Incident(STATE_DIR / 'undervoltage.json')
 
     def setup(self) -> None:
@@ -327,19 +373,23 @@ class Runner:
         row2 = line2[:COLUMNS].ljust(COLUMNS)
         WORK_FILE.parent.mkdir(parents=True, exist_ok=True)
         WORK_FILE.write_text(f"{row1}\n{row2}\n", encoding="utf-8")
-        with HISTORY_FILE.open("a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(
-                    {
-                        "ts": datetime.now(timezone.utc).isoformat(),
-                        "line1": row1,
-                        "line2": row2,
-                        "label": label,
-                    },
-                    sort_keys=True,
+        history_frame = (row1, row2, label)
+        if history_frame != self.last_history_frame:
+            with HISTORY_FILE.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                            "line1": row1,
+                            "line2": row2,
+                            "label": label,
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
+            self.last_history_frame = history_frame
+            compact_history(HISTORY_FILE)
         self.ensure_lcd()
         if self.lcd is None:
             return
@@ -477,6 +527,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop-embedded", action="store_true", help="Stop embedded apps.screens.lcd_screen.runner processes owned by this user.")
     parser.add_argument("--once", action="store_true", help="Render one frame and exit.")
     parser.add_argument("--show-current", action="store_true", help="Read last confirmed physical LCD frame without I2C access.")
+    parser.add_argument("--compact-history", action="store_true", help="Atomically trim oversized LCD history without I2C access.")
     parser.add_argument("--json", action="store_true", help="JSON output with --show-current.")
     parser.add_argument("--dry-run", action="store_true", help="Print selected frame instead of writing LCD/fallback output.")
     return parser
@@ -488,6 +539,10 @@ def main(argv: list[str] | None = None) -> int:
     args.lock_dir = parse_lock_dirs(args.lock_dir)
     if args.show_current:
         return Runner.show_current(as_json=args.json)
+    if args.compact_history:
+        kept = compact_history()
+        print(f"LCD history compacted: kept {kept} entries" if kept else "LCD history is already within its limit")
+        return 0
     if args.json:
         parser.error("--json requires --show-current")
     runner = Runner(args)
