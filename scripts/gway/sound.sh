@@ -400,6 +400,7 @@ DEFAULT_EVENTS = (
     ("codex", "SubagentStop", "notice"),
     ("codex", "Stop", "ok"),
     ("codex", "Interrupt", "warning"),
+    ("ssh", "session-opened", "notice"),
     ("wifi", "connected", "ok"),
     ("gway-monitor", "bastion-ready", "ok"),
     ("gway-monitor", "bastion-failed", "error"),
@@ -478,6 +479,7 @@ def event_database(path=DEFAULT_EVENT_DB):
         "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
         (
             ("codex", json.dumps([[659, 0.07, 0.04], [988, 0.09, 0.0]]), 45),
+            ("ssh", json.dumps([[440, 0.06, 0.035], [659, 0.08, 0.0]]), 60),
             ("wifi", json.dumps([[523, 0.06, 0.035], [784, 0.06, 0.0]]), 45),
             ("github", json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45),
         ),

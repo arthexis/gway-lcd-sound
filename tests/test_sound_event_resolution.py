@@ -28,6 +28,12 @@ class EventSoundTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["sound"], "notice")
         self.assertEqual(self.db.stat().st_mode & 0o077, 0)
 
+    def test_seeded_ssh_session_mapping_and_motif(self):
+        result = self.call("--event", "session-opened", "--source", "ssh", "--resolve")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["sound"], "notice")
+        self.assertIn("ssh", json.loads(self.call("--list-motifs").stdout))
+
     def test_source_override_global_fallback_and_alias(self):
         self.call("--event", "Stop", "--source", "codex", "--resolve")
         with sqlite3.connect(self.db) as db:

@@ -97,6 +97,11 @@ sound --resolve --event Stop --source codex
 `--resolve` prints a JSON record with `source`, `event`, `sound`
 and `matched_source`, without playing audio. Unknown events are **silent**.
 
+The `ssh` producer maps `session-opened` to `notice` and has a 60-second
+source motif cooldown. The producer, rate limit, and PAM integration are owned
+by `gway-bastion`; LCD/Sound only owns this shared playback mapping. SSH is
+not enabled by this repository's installer.
+
 Mapping data is stored in SQLite at
 `~/.local/state/gway-sound/events.sqlite3` by default (override with
 `GWAY_SOUND_EVENT_DB` or `--event-db`). The first database creation seeds
