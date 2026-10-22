@@ -102,6 +102,10 @@ source motif cooldown. The producer, rate limit, and PAM integration are owned
 by `gway-bastion`; LCD/Sound only owns this shared playback mapping. SSH is
 not enabled by this repository's installer.
 
+`gway-monitor` has a neutral ascending three-note source motif with a
+45-second cooldown. It announces monitor context before the existing event
+earcon, without changing any monitor event mapping.
+
 Mapping data is stored in SQLite at
 `~/.local/state/gway-sound/events.sqlite3` by default (override with
 `GWAY_SOUND_EVENT_DB` or `--event-db`). The first database creation seeds
