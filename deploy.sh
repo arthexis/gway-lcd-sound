@@ -16,6 +16,10 @@ if [ "$#" -eq 0 ]; then
      [ -d "$release/scripts/gway" ] &&
      [ "$(readlink "$bin/lcd-lockfile-runner" 2>/dev/null || true)" = "$prefix/current/scripts/gway/lcd_lockfile_runner.py" ] &&
      [ "$(readlink "$bin/gway-event-sound-monitor" 2>/dev/null || true)" = "$prefix/current/scripts/gway/gway_event_sound_monitor.py" ] &&
+     [ "$(readlink "$bin/lcd-system-info-publisher" 2>/dev/null || true)" = "$prefix/current/scripts/gway/lcd_system_info_publisher.py" ] &&
+     [ "$(readlink "$bin/gway-app-observer" 2>/dev/null || true)" = "$prefix/current/scripts/gway/gway_app_observer.py" ] &&
+     "$bin/lcd-system-info-publisher" --help >/dev/null 2>&1 &&
+     "$bin/gway-app-observer" --help >/dev/null 2>&1 &&
      "$bin/lcd-lockfile-runner" --help >/dev/null 2>&1 &&
      "$bin/gway-event-sound-monitor" --help >/dev/null 2>&1; then
     printf 'LCD Sound revision %s already installed and healthy; skipped Ansible.\n' "$revision"
