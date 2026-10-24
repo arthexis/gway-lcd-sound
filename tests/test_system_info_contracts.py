@@ -64,3 +64,22 @@ def test_command_runner_timeout_is_nonfatal(monkeypatch):
         raise subprocess.TimeoutExpired(args[0], 0.01)
     monkeypatch.setattr(collectors.subprocess, "run", timed_out)
     assert collectors.run(["fake", "cmd"], timeout=0.01) == ""
+
+
+def test_wifi_summary_shows_connected_ssid_below_ap_status(monkeypatch):
+    monkeypatch.setattr(collectors, "wlan_interfaces", lambda: ["wlan0", "wlan1"])
+
+    def run(argv, timeout):
+        if argv == ["iw", "dev", "wlan0", "info"]:
+            return "type AP\n"
+        if argv == ["iw", "dev", "wlan0", "station", "dump"]:
+            return "Station aa:bb:cc:dd:ee:ff\n"
+        if argv == ["iw", "dev", "wlan1", "info"]:
+            return "type managed\n"
+        if argv == ["iw", "dev", "wlan1", "link"]:
+            return "SSID: IZZI-158E\nsignal: -47 dBm\n"
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(collectors, "run", run)
+
+    assert collectors.wifi_summary() == ("WIFI wlan0 AP1", "IZZI-158E")
