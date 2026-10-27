@@ -12,6 +12,7 @@ trap cleanup_gpio EXIT
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 import json
+import re
 import sqlite3
 import fcntl
 import math
