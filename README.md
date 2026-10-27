@@ -214,3 +214,7 @@ Run `gway-lcd-sound piano` on GWay-001 to edit a monophonic motif or event sound
 The terminal shows precise Hz, note duration in ms and pause in ms.
 See [Piano CLI documentation](docs/piano.md) for keyboard controls,
 persistence, import/export and deployment caveats.
+
+## Authoring source motifs
+
+Use `sound motif preview|validate|show|list|set|remove` for supported motif editing and audition. See [motif authoring](docs/motif-authoring.md) for limits, persistence, rollback and hardware acceptance.
