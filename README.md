@@ -214,3 +214,18 @@ Run `gway-lcd-sound piano` on GWay-001 to edit a monophonic motif or event sound
 The terminal shows precise Hz, note duration in ms and pause in ms.
 See [Piano CLI documentation](docs/piano.md) for keyboard controls,
 persistence, import/export and deployment caveats.
+
+## GWAY Remote deployment motif
+
+Source `gway-remote` uses a low–high–middle dispatch motif (392, 784, 587 Hz),
+with the existing 45-second motif context cooldown. Deployment events map to:
+`deploy-started` → `busy`, `deploy-activated` → `notice`, `deploy-verified` → `ok`,
+`deploy-failed` → `error`, `rollback-started` → `warning`,
+`rollback-verified` → `ok`, and `rollback-failed` → `critical`.
+The producer owns verification; activation alone does not earn a success sound.
+Mappings and motif seed existing databases without replacing customizations.
+Preview without playing audio:
+
+```sh
+sound --event deploy-verified --source gway-remote --dry-run
+```

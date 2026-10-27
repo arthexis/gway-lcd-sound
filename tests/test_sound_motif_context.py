@@ -29,6 +29,34 @@ class MotifTests(unittest.TestCase):
             db.execute("INSERT OR REPLACE INTO motif_context VALUES (1,?,?)",
                        (source, played_at))
 
+    def test_remote_deployment_mapping_and_cooldown(self):
+        expected = {"deploy-started": "busy", "deploy-activated": "notice",
+                    "deploy-verified": "ok", "deploy-failed": "error",
+                    "rollback-started": "warning", "rollback-verified": "ok",
+                    "rollback-failed": "critical"}
+        for event, sound in expected.items():
+            row = self.call(event, "gway-remote")
+            self.assertEqual(row["sound"], sound)
+            self.assertTrue(row["motif"])
+        with sqlite3.connect(self.db) as db:
+            notes, cooldown = db.execute("SELECT notes,cooldown_seconds FROM motifs WHERE source='gway-remote'").fetchone()
+        frequencies = [step[0] for step in json.loads(notes)]
+        self.assertLess(frequencies[0], frequencies[2])
+        self.assertLess(frequencies[2], frequencies[1])
+        self.assertEqual(cooldown, 45)
+        self.set_context("gway-remote", time.time())
+        self.assertFalse(self.call("deploy-verified", "gway-remote")["motif"])
+
+    def test_remote_upgrade_preserves_customized_mapping_and_motif(self):
+        self.call("deploy-verified", "gway-remote")
+        custom = json.dumps([[440, 0.05, 0.0]])
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE motifs SET notes=?, cooldown_seconds=99 WHERE source='gway-remote'", (custom,))
+            db.execute("UPDATE events SET sound='notice' WHERE source='gway-remote' AND event='deploy-verified'")
+        self.assertEqual(self.call("deploy-verified", "gway-remote")["sound"], "notice")
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute("SELECT notes,cooldown_seconds FROM motifs WHERE source='gway-remote'").fetchone(), (custom, 99))
+
     def test_initial_motif_and_repeat_suppression(self):
         self.assertTrue(self.call()["motif"])
         self.set_context("codex", time.time())
