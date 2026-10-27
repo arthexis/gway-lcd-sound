@@ -12,6 +12,7 @@ trap cleanup_gpio EXIT
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 import json
+import re
 import sqlite3
 import fcntl
 import math
@@ -566,13 +567,9 @@ def motif_for(source, db):
         return None
     notes, cooldown = row
     try:
-        pattern = tuple((float(hz), float(duration), float(pause)) for hz, duration, pause in json.loads(notes))
-        if not pattern or len(pattern) > 12 or any(
-            not 80 <= hz <= 4000 or not 0.01 <= duration <= 0.4 or not 0 <= pause <= 0.4
-            for hz, duration, pause in pattern
-        ) or not 0 <= cooldown <= 3600:
-            raise ValueError("invalid motif")
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        pattern = validate_motif_notes(json.loads(notes))
+        cooldown = validate_cooldown(cooldown)
+    except (TypeError, ValueError) as exc:
         raise ValueError("invalid motif definition") from exc
     return pattern, cooldown
 
@@ -626,6 +623,124 @@ def list_sounds():
         print(f"{name:<9} {DESCRIPTIONS[name]}")
 
 
+
+# All motif operations share the same bounds as ephemeral sound patterns.
+BUILTIN_MOTIFS = frozenset({"codex", "gway-monitor", "ssh", "wifi", "github"})
+
+
+def validate_motif_notes(raw):
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 12:
+        raise ValueError("notes must be an array of 1 to 12 triples")
+    pattern = []
+    for note in raw:
+        if not isinstance(note, (list, tuple)) or len(note) != 3:
+            raise ValueError("each note must contain frequency, duration and pause")
+        if any(isinstance(v, bool) or not isinstance(v, (float, int)) for v in note):
+            raise ValueError("note values must be numbers")
+        hz, duration, pause = map(float, note)
+        if not all(map(math.isfinite, (hz, duration, pause))):
+            raise ValueError("note values must be finite")
+        if (hz != 0 and not 80 <= hz <= 4000) or not 0.01 <= duration <= 0.4 or not 0 <= pause <= 0.4:
+            raise ValueError("note outside supported frequency/duration/pause bounds")
+        pattern.append((hz, duration, pause))
+    return tuple(pattern)
+
+
+def validate_cooldown(value):
+    cooldown = float(value)
+    if not math.isfinite(cooldown) or not 0 <= cooldown <= 3600:
+        raise ValueError("cooldown must be finite and between 0 and 3600 seconds")
+    return cooldown
+
+
+def validate_motif_source(source):
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", source or ""):
+        raise ValueError("source must be lowercase ASCII letters, digits or hyphens, starting with a letter")
+    if motif_identity(source) != source:
+        raise ValueError("source is an alias of the shared github motif")
+    return source
+
+
+def motif_command(argv):
+    parser = argparse.ArgumentParser(prog="sound motif")
+    parser.add_argument("action", choices=("preview", "validate", "show", "list", "set", "remove"))
+    parser.add_argument("source", nargs="?")
+    parser.add_argument("--notes", help="JSON array of [Hz, seconds, pause] triples")
+    parser.add_argument("--cooldown-seconds", type=float)
+    parser.add_argument("--event-db", default=DEFAULT_EVENT_DB)
+    parser.add_argument("--backend", choices=("auto", "audio", "gpio"), default=DEFAULT_BACKEND)
+    parser.add_argument("--volume", type=float, default=0.42)
+    parser.add_argument("--device", default=DEFAULT_AUDIO_DEVICE)
+    parser.add_argument("--pin", type=int, default=DEFAULT_PIN)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        if args.action in ("preview", "validate", "set"):
+            if args.notes is None:
+                raise ValueError("--notes is required")
+            notes = validate_motif_notes(json.loads(args.notes))
+        elif args.notes is not None:
+            raise ValueError("--notes is not valid for this action")
+        if args.action in ("validate", "set"):
+            if args.cooldown_seconds is None:
+                raise ValueError("--cooldown-seconds is required")
+            cooldown = validate_cooldown(args.cooldown_seconds)
+        elif args.cooldown_seconds is not None:
+            raise ValueError("--cooldown-seconds is only valid for validate/set")
+        if args.action in ("set", "show", "remove"):
+            validate_motif_source(args.source)
+        elif args.source is not None:
+            raise ValueError("source is only valid for set/show/remove")
+        if args.action != "preview" and (args.dry_run or args.backend != DEFAULT_BACKEND or args.volume != 0.42):
+            raise ValueError("playback options are only valid for preview")
+        if args.action == "validate":
+            print(json.dumps({"valid": True, "notes": [list(n) for n in notes], "cooldown_seconds": cooldown}, sort_keys=True))
+            return 0
+        if args.action == "preview":
+            play_custom("preview", notes, args)
+            return 0
+        db_path = os.path.abspath(args.event_db)
+        # Serialize modifications against motif playback and other motif writers.
+        directory = os.path.dirname(db_path)
+        if args.action in ("set", "remove"):
+            os.makedirs(directory, mode=0o700, exist_ok=True)
+            if os.stat(directory).st_mode & 0o077:
+                raise PermissionError("sound event directory must be private")
+            lock_path = os.path.join(directory, "motif-play.lock")
+            if os.path.islink(lock_path):
+                raise ValueError("motif lock must not be symlinked")
+            with open(lock_path, "a+b") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                with event_database(db_path) as db:
+                    if args.action == "set":
+                        db.execute("INSERT INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?) "
+                                   "ON CONFLICT(source) DO UPDATE SET notes=excluded.notes, cooldown_seconds=excluded.cooldown_seconds",
+                                   (args.source, json.dumps(notes), cooldown))
+                        result = {"source": args.source, "notes": [list(n) for n in notes], "cooldown_seconds": cooldown}
+                    else:
+                        if args.source in BUILTIN_MOTIFS:
+                            raise ValueError("built-in motifs cannot be removed")
+                        deleted = db.execute("DELETE FROM motifs WHERE source=?", (args.source,)).rowcount
+                        if not deleted:
+                            raise ValueError("motif does not exist")
+                        result = {"source": args.source, "removed": True}
+                    db.commit()
+        else:
+            with event_database(db_path) as db:
+                if args.action == "list":
+                    result = [{"source": row[0], "notes": json.loads(row[1]), "cooldown_seconds": row[2]}
+                              for row in db.execute("SELECT source,notes,cooldown_seconds FROM motifs ORDER BY source")]
+                else:
+                    row = db.execute("SELECT notes,cooldown_seconds FROM motifs WHERE source=?", (args.source,)).fetchone()
+                    if row is None:
+                        raise ValueError("motif does not exist")
+                    result = {"source": args.source, "notes": json.loads(row[0]), "cooldown_seconds": row[1]}
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    except (ValueError, TypeError, sqlite3.Error, OSError) as exc:
+        parser.error(str(exc))
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="sound.sh",
@@ -655,6 +770,8 @@ def build_parser():
 
 def main(argv):
     parser = build_parser()
+    if argv and argv[0] == "motif":
+        return motif_command(argv[1:])
     args = parser.parse_args(argv)
     args.volume = clamp(args.volume, 0.0, 1.0)
     args.pause = clamp(args.pause, 0.0, 3.0)
