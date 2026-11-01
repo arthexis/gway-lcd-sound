@@ -14,6 +14,15 @@ restart=1
 [[ "${2:-}" == --no-restart ]] && restart=0
 [[ -z "${2:-}" || "${2:-}" == --no-restart ]] || usage
 
+# Share the canonical deploy/prune lock even for direct installer invocations.
+lock_dir="$HOME/.local/state/gway-lcd-sound"
+[[ ! -L "$HOME/.local/state" && ! -L "$lock_dir" ]] || { echo "Unsafe lock directory" >&2; exit 2; }
+(umask 077; mkdir -p "$lock_dir")
+[[ ! -L "$lock_dir/deploy.lock" ]] || { echo "Unsafe lock file" >&2; exit 2; }
+(umask 077; : >> "$lock_dir/deploy.lock")
+exec 9<>"$lock_dir/deploy.lock"
+flock -n 9 || { echo "LCD Sound deployment/prune already active" >&2; exit 3; }
+
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 prefix="${GWAY_LCD_SOUND_PREFIX:-$HOME/.local/share/gway-lcd-sound}"
 bin_dir="${GWAY_LCD_SOUND_BIN_DIR:-$HOME/.local/bin}"
