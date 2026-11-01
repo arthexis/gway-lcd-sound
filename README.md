@@ -229,3 +229,20 @@ Preview without playing audio:
 ```sh
 sound --event deploy-verified --source gway-remote --dry-run
 ```
+
+### Immutable release cleanup
+
+The release owner can inspect prior releases without changing services or persistent data:
+
+```sh
+./deploy.sh --prune
+./deploy.sh --prune --json
+./deploy.sh --prune --apply
+```
+
+Dry-run is the default; `--apply` is an explicit destructive operation. Only owner-managed
+immutable release directories are candidates; `current`, the available `previous` rollback
+pointer, and installed CLI references are preserved. Unknown names, unsafe symlinks,
+lock contention and excessive candidate counts block cleanup. Apply uses the same
+deployment lock and rechecks each candidate before removal. No database, credentials,
+shared dependencies or system services are removed, and deployment never prunes automatically.
