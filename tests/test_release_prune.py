@@ -38,7 +38,7 @@ class ReleasePruneTests(unittest.TestCase):
             self.assertTrue((self.releases / self.old).exists())
             result = prune.execute(self.root)
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(set(result["deleted"]), {self.old} if not prune.HAS_PREVIOUS else {self.old})
+        self.assertEqual(set(result["deleted"]), {self.old} if prune.HAS_PREVIOUS else {self.old, self.prev})
         self.assertTrue((self.releases / self.active).exists())
         self.assertTrue((self.releases / self.prev).exists() if prune.HAS_PREVIOUS else True)
         self.assertEqual(data.read_text(), "persistent")
