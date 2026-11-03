@@ -6,9 +6,7 @@ import json
 import os
 import signal
 import sys
-import time
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sound_engine.observations import snapshot, thermal_level
