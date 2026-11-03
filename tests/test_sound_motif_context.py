@@ -47,6 +47,17 @@ class MotifTests(unittest.TestCase):
         self.set_context("gway-remote", time.time())
         self.assertFalse(self.call("deploy-verified", "gway-remote")["motif"])
 
+    def test_mcp_execution_events_share_remote_motif(self):
+        expected = {"mcp-exec-started": "busy", "mcp-exec-completed": "ok",
+                    "mcp-exec-failed": "error", "mcp-exec-timed-out": "warning"}
+        for event, sound in expected.items():
+            row = self.call(event, "gway-remote")
+            self.assertEqual(row["sound"], sound)
+            self.assertTrue(row["motif"])
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE events SET sound='notice' WHERE source='gway-remote' AND event='mcp-exec-completed'")
+        self.assertEqual(self.call("mcp-exec-completed", "gway-remote")["sound"], "notice")
+
     def test_remote_upgrade_preserves_customized_mapping_and_motif(self):
         self.call("deploy-verified", "gway-remote")
         custom = json.dumps([[440, 0.05, 0.0]])
