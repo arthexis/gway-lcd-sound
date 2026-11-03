@@ -56,8 +56,13 @@ BCM GPIO pin. The local default is 18.
 .BI --volume " VALUE"
 Volume from 0.0 to 1.0.
 .TP
+.BI --repeat " COUNT"
+Play a sound, event earcon, or custom pattern COUNT times (1 through 20; default 1).
+A source motif is announced only once per event invocation.
+.TP
 .BI --pause " SECONDS"
-Pause between sounds for all/test.
+Delay between repetitions or all/test sounds (0 through 3 seconds; default 0.35).
+No delay is added after the final repeat.
 .TP
 .B --dry-run
 Print patterns without playing.
@@ -116,6 +121,12 @@ Play the attention sound quietly:
 sound attention --volume 0.20
 .fi
 .PP
+Repeat the warning earcon three times with a one-second rest:
+.PP
+.nf
+sound warning --repeat 3 --pause 1
+.fi
+.PP
 Mute event sounds:
 .PP
 .nf
@@ -133,6 +144,14 @@ Run the event monitor once without playback:
 .nf
 /home/arthe/.local/bin/gway-event-sound-monitor --once --json --dry-run
 .fi
+.PP
+The GPIO mute toggle marker (normally
+.I /run/user/UID/gway-sound/gpio-muted
+) suppresses *both* GPIO and audio backends, including motifs and custom
+patterns. The legacy Codex hook silent marker also suppresses shared
+playback. Mute is checked before each repeat, so muting mid-sequence stops
+subsequent repeats. Playback already in progress cannot be interrupted.
+Dry-run and resolve modes remain silent inspections regardless of mute.
 .SH FILES
 .TP
 .I /usr/local/bin/sound
@@ -142,7 +161,7 @@ GPIO earcon player.
 Deprecated compatibility wrapper for callers not yet migrated.
 .TP
 .I /home/arthe/.local/state/codex-sound-hooks/silent
-Presence of this file mutes hook playback.
+Presence of this file mutes both legacy hook and shared sound playback.
 .TP
 .I /home/arthe/.local/state/codex-sound-hooks/events.log
 Sound-hook event log.
