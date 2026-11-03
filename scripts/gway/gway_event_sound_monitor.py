@@ -11,13 +11,11 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sound_engine.config import *
-from sound_engine.observations import *
-from sound_engine.playback import SOUND_ALIASES, play
+from sound_engine.observations import snapshot, thermal_level
+from sound_engine.playback import SOUND_ALIASES
 from sound_engine.state import log, save_state
-from sound_engine.events import (
-    added_removed, process_changes, handle_upgrade, handle_thermal, handle_undervoltage,
-)
+from sound_engine.events import process_changes
+from sound_engine.monitor_runtime import run_monitor
 
 STOP = False
 
@@ -46,29 +44,15 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, handle_stop)
     signal.signal(signal.SIGINT, handle_stop)
 
-    previous = snapshot()
-    initial_thermal_level = (previous.get("thermal") or {}).get("level", "unknown")
-    runtime: dict[str, Any] = {
-        "last_thermal_level": initial_thermal_level,
-        "last_thermal_played_level": initial_thermal_level,
-        "last_thermal_at": time.monotonic(),
-        "last_undervoltage_active": False,
-        "last_undervoltage_at": 0.0,
-    }
-    save_state({"started_at": time.time(), "snapshot": previous})
-    log("baseline", summary="event sound monitor started")
-
-    while not STOP:
-        time.sleep(max(1.0, args.poll_seconds))
-        current = snapshot()
-        try:
-            process_changes(previous, current, runtime, dry_run=args.dry_run)
-        except Exception as exc:
-            log("error", error=repr(exc))
-        previous = current
-        save_state({"updated_at": time.time(), "snapshot": current, "runtime": runtime})
-
-    log("stopped", summary="event sound monitor stopped")
+    run_monitor(
+        observe=snapshot,
+        process=process_changes,
+        persist=save_state,
+        log=log,
+        should_stop=lambda: STOP,
+        poll_seconds=args.poll_seconds,
+        dry_run=args.dry_run,
+    )
     return 0
 
 
