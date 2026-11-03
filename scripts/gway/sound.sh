@@ -160,7 +160,25 @@ def mark_noise_alarm_suppressed(name, backend, pattern):
 
 
 def gpio_muted():
+    # Retain legacy function name; the marker now mutes all backends.
     return os.path.exists(GPIO_MUTE_FILE)
+
+
+def playback_muted():
+    return gpio_muted() or os.path.exists(os.path.join(
+        os.environ.get("CODEX_SOUND_HOOK_STATE_DIR",
+                       "/home/arthe/.local/state/codex-sound-hooks"), "silent"))
+
+
+def repeat_playback(callback, args):
+    for iteration in range(args.repeat):
+        if not args.dry_run and playback_muted():
+            log_backend(f"playback skipped=muted iteration={iteration + 1}")
+            break
+        callback()
+        if iteration + 1 < args.repeat and not args.dry_run and args.pause > 0:
+            time.sleep(args.pause)
+
 
 
 def ensure_gpio_workdir():
@@ -368,8 +386,8 @@ def play_pattern(name, *, pin, volume, backend, device, dry_run=False):
         return
     if backend == "auto":
         backend = "gpio"
-    if backend == "gpio" and gpio_muted():
-        log_backend(f"sound={name} backend=gpio muted flag={GPIO_MUTE_FILE}")
+    if playback_muted():
+        log_backend(f"sound={name} backend={backend} skipped=muted")
         return
     if backend == "audio":
         try:
@@ -606,7 +624,7 @@ def play_event(resolved, args):
                 previous is None or previous[0] != source or
                 now - previous[1] >= motif[1] or now < previous[1]
             ))
-            if announce and not args.dry_run and not (args.backend in ("gpio", "auto") and gpio_muted()):
+            if announce and not args.dry_run and not playback_muted():
                 # Reuse the same playback backend; the motif is not part of public earcon vocabulary.
                 private_name = "__source_motif__"
                 PATTERNS[private_name] = motif[0]
@@ -622,15 +640,19 @@ def play_event(resolved, args):
                 )
                 db.commit()
             if args.dry_run:
-                print(json.dumps({"source": source, "event": resolved["event"],
-                                  "motif": announce, "sound": resolved["sound"]}, sort_keys=True))
+                repeat_playback(lambda: print(json.dumps({
+                    "source": source, "event": resolved["event"],
+                    "motif": announce, "sound": resolved["sound"]
+                }, sort_keys=True)), args)
             else:
                 custom = custom_pattern(resolved["sound"], db)
-                if custom is not None:
-                    play_custom(resolved["sound"], custom, args)
-                else:
-                    play_pattern(resolved["sound"], pin=args.pin, volume=args.volume,
-                                 backend=args.backend, device=args.device)
+                def play_one_event():
+                    if custom is not None:
+                        play_custom(resolved["sound"], custom, args)
+                    else:
+                        play_pattern(resolved["sound"], pin=args.pin, volume=args.volume,
+                                     backend=args.backend, device=args.device)
+                repeat_playback(play_one_event, args)
 
 
 def list_sounds():
@@ -658,7 +680,8 @@ def build_parser():
     parser.add_argument("--event-db", default=DEFAULT_EVENT_DB, help="SQLite event mapping path")
     parser.add_argument("--pin", type=int, default=DEFAULT_PIN, help="BCM GPIO pin, default 18")
     parser.add_argument("--volume", type=float, default=0.42, help="0.0-1.0, default 0.42")
-    parser.add_argument("--pause", type=float, default=0.35, help="pause between sounds for all/test")
+    parser.add_argument("--pause", type=float, default=0.35, help="seconds between repeats or sounds (0-3)")
+    parser.add_argument("--repeat", type=int, default=1, help="plays per invocation (1-20; default 1)")
     parser.add_argument("--backend", choices=("auto", "audio", "gpio"), default=DEFAULT_BACKEND, help="playback backend; normal earcons use gpio")
     parser.add_argument("--device", default=DEFAULT_AUDIO_DEVICE, help="PulseAudio/PipeWire sink or ALSA device")
     parser.add_argument("--dry-run", action="store_true", help="print patterns without playing")
@@ -669,7 +692,10 @@ def main(argv):
     parser = build_parser()
     args = parser.parse_args(argv)
     args.volume = clamp(args.volume, 0.0, 1.0)
-    args.pause = clamp(args.pause, 0.0, 3.0)
+    if not math.isfinite(args.pause) or not 0 <= args.pause <= 3:
+        parser.error("--pause must be between 0 and 3 seconds")
+    if not 1 <= args.repeat <= 20:
+        parser.error("--repeat must be between 1 and 20")
     args.backend = (args.backend or "auto").strip().lower()
     if args.pattern_json:
         if args.event or args.motif or args.resolve:
@@ -684,11 +710,13 @@ def main(argv):
                 for note in pattern
             ):
                 raise ValueError("invalid preview notes")
-            play_custom("preview", pattern, args)
+            repeat_playback(lambda: play_custom("preview", pattern, args), args)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             parser.error(str(exc))
         return 0
     if args.list_motifs:
+        if args.repeat != 1:
+            parser.error("--repeat requires playback")
         if args.event or args.motif or args.sound != "list":
             parser.error("--list-motifs cannot be combined with playback")
         with event_database(args.event_db) as db:
@@ -698,6 +726,8 @@ def main(argv):
         parser.error("--motif is only for direct sound playback")
     if args.resolve and not args.event:
         parser.error("--resolve requires --event")
+    if args.resolve and args.repeat != 1:
+        parser.error("--repeat cannot be used with --resolve")
     if args.source and not args.event:
         parser.error("--source requires --event")
     if args.event:
@@ -718,13 +748,20 @@ def main(argv):
         requested = args.sound.strip().lower().replace("_", "-")
 
     if requested in {"list", "ls"}:
+        if args.repeat != 1:
+            parser.error("--repeat requires playback")
         list_sounds()
         return 0
     if requested in {"all", "test", "demo"}:
-        for name in PATTERNS:
+        names = list(PATTERNS)
+        for index, name in enumerate(names):
+            if not args.dry_run and playback_muted():
+                break
             print(name, flush=True)
-            play_pattern(name, pin=args.pin, volume=args.volume, backend=args.backend, device=args.device, dry_run=args.dry_run)
-            if not args.dry_run and args.pause > 0:
+            repeat_playback(lambda name=name: play_pattern(
+                name, pin=args.pin, volume=args.volume, backend=args.backend,
+                device=args.device, dry_run=args.dry_run), args)
+            if index + 1 < len(names) and not args.dry_run and args.pause > 0 and not playback_muted():
                 time.sleep(args.pause)
         return 0
     with event_database(args.event_db) as db:
@@ -743,18 +780,20 @@ def main(argv):
             private_name = "__manual_motif__"
             PATTERNS[private_name] = motif[0]
             try:
-                play_pattern(private_name, pin=args.pin, volume=args.volume,
-                             backend=args.backend, device=args.device, dry_run=args.dry_run)
-                (play_custom(requested, custom, args) if custom is not None else
-                 play_pattern(requested, pin=args.pin, volume=args.volume,
-                              backend=args.backend, device=args.device, dry_run=args.dry_run))
+                if args.dry_run or not playback_muted():
+                    play_pattern(private_name, pin=args.pin, volume=args.volume,
+                                 backend=args.backend, device=args.device, dry_run=args.dry_run)
+                repeat_playback(lambda: (
+                    play_custom(requested, custom, args) if custom is not None else
+                    play_pattern(requested, pin=args.pin, volume=args.volume,
+                                 backend=args.backend, device=args.device, dry_run=args.dry_run)), args)
             finally:
                 PATTERNS.pop(private_name, None)
     else:
-        if custom is not None:
-            play_custom(requested, custom, args)
-        else:
-            play_pattern(requested, pin=args.pin, volume=args.volume, backend=args.backend, device=args.device, dry_run=args.dry_run)
+        repeat_playback(lambda: (
+            play_custom(requested, custom, args) if custom is not None else
+            play_pattern(requested, pin=args.pin, volume=args.volume,
+                         backend=args.backend, device=args.device, dry_run=args.dry_run)), args)
     return 0
 
 
