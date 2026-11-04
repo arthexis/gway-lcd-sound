@@ -184,6 +184,7 @@ class Runner:
         self.order: tuple[str, ...] = DEFAULT_ORDER
         self.order_index = 0
         self.event: EventPayload | None = None
+        self.event_signature: tuple[int, int, int] | None = None
         self.event_line_index = 0
         self.lcd = None
         self.bus = None
@@ -339,20 +340,42 @@ class Runner:
             return clock_payload()
         return Payload("", "", label=label)
 
+    @staticmethod
+    def event_file_signature(path: Path) -> tuple[int, int, int] | None:
+        """Notice atomic replacements and in-place event updates without I2C."""
+        try:
+            state = path.stat()
+            return state.st_ino, state.st_mtime_ns, state.st_size
+        except OSError:
+            return None
+
     def active_event(self, now: datetime) -> EventPayload | None:
         global EVENT_INTERRUPT
         if EVENT_INTERRUPT:
             self.event = None
+            self.event_signature = None
             self.event_line_index = 0
             EVENT_INTERRUPT = False
-        if self.event is not None and self.event.expires_at > now:
-            return self.event
-        if self.event is not None and self.event.expires_at <= now:
-            try:
-                self.event.source.unlink()
-            except OSError:
-                pass
+        if self.event is not None:
+            current_signature = self.event_file_signature(self.event.source)
+            if current_signature != self.event_signature:
+                # The producer superseded the cached frame. Reload it now,
+                # even when the old expiry has not elapsed.
+                self.event = None
+                self.event_signature = None
+                self.event_line_index = 0
+            elif self.event.expires_at > now:
+                return self.event
+            else:
+                try:
+                    self.event.source.unlink()
+                except OSError:
+                    pass
+                self.event = None
+                self.event_signature = None
         self.event = load_next_event(self.lock_dirs, now=now)
+        self.event_signature = (self.event_file_signature(self.event.source)
+                                if self.event is not None else None)
         self.event_line_index = 0
         return self.event
 
@@ -483,6 +506,7 @@ class Runner:
         normal_payload: Payload | None = None
         event_payload: Payload | None = None
         event_source: Path | None = None
+        last_event: EventPayload | None = None
         try:
             while not STOP:
                 if self.args.stop_embedded:
@@ -497,9 +521,11 @@ class Runner:
                 if event is None:
                     event_payload = None
                     event_source = None
-                elif event_payload is None or event.source != event_source:
+                    last_event = None
+                elif event_payload is None or event.source != event_source or event != last_event:
                     event_source = event.source
                     event_payload = self.event_payload(event)
+                    last_event = event
                 choice = scheduler.tick(
                     now=now,
                     monotonic=time.monotonic(),
