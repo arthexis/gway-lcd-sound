@@ -508,20 +508,42 @@ def event_database(path=DEFAULT_EVENT_DB):
     connection.executemany(
         "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
         (
-            ("codex", json.dumps([[659, 0.07, 0.04], [988, 0.09, 0.0]]), 45),
-            ("gway-monitor", json.dumps([[330, 0.055, 0.025], [494, 0.055, 0.025], [659, 0.085, 0.0]]), 45),
-            ("ssh", json.dumps([[440, 0.06, 0.035], [659, 0.08, 0.0]]), 60),
-            ("gway-remote", json.dumps([[392, 0.06, 0.025], [784, 0.07, 0.025], [587, 0.09, 0.0]]), 45),
-            ("wifi", json.dumps([[523, 0.06, 0.035], [784, 0.06, 0.0]]), 45),
-            ("github", json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45),
+            ("codex", json.dumps([[659, 0.18, 0.09], [988, 0.28, 0.0]]), 45),
+            ("gway-monitor", json.dumps([[330, 0.16, 0.07], [494, 0.11, 0.04], [659, 0.08, 0.0]]), 45),
+            ("ssh", json.dumps([[440, 0.08, 0.05], [659, 0.12, 0.0]]), 60),
+            ("gway-remote", json.dumps([[392, 0.08, 0.05], [784, 0.08, 0.06], [587, 0.24, 0.0]]), 45),
+            ("wifi", json.dumps([[350, 0.08, 0.035], [440, 0.08, 0.08], [620, 0.08, 0.025], [470, 0.08, 0.025], [880, 0.12, 0.0]]), 45),
+            ("github", json.dumps([[392, 0.11, 0.09], [587, 0.11, 0.09], [784, 0.11, 0.0]]), 45),
         ),
     )
+    # Upgrade only exact factory motifs; never overwrite user-edited compositions.
+    legacy_factory_motifs = {
+        "codex": [[659, 0.07, 0.04], [988, 0.09, 0.0]],
+        "gway-monitor": [[330, 0.055, 0.025], [494, 0.055, 0.025], [659, 0.085, 0.0]],
+        "ssh": [[440, 0.06, 0.035], [659, 0.08, 0.0]],
+        "gway-remote": [[392, 0.06, 0.025], [784, 0.07, 0.025], [587, 0.09, 0.0]],
+        "wifi": [[523, 0.06, 0.035], [784, 0.06, 0.0]],
+        "github": [[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]],
+    }
+    new_factory_motifs = {
+        "codex": [[659, 0.18, 0.09], [988, 0.28, 0.0]],
+        "gway-monitor": [[330, 0.16, 0.07], [494, 0.11, 0.04], [659, 0.08, 0.0]],
+        "ssh": [[440, 0.08, 0.05], [659, 0.12, 0.0]],
+        "gway-remote": [[392, 0.08, 0.05], [784, 0.08, 0.06], [587, 0.24, 0.0]],
+        "wifi": [[350, 0.08, 0.035], [440, 0.08, 0.08], [620, 0.08, 0.025], [470, 0.08, 0.025], [880, 0.12, 0.0]],
+        "github": [[392, 0.11, 0.09], [587, 0.11, 0.09], [784, 0.11, 0.0]],
+    }
+    for source, previous_notes in legacy_factory_motifs.items():
+        row = connection.execute("SELECT notes FROM motifs WHERE source=?", (source,)).fetchone()
+        if row and json.loads(row[0]) == previous_notes:
+            connection.execute("UPDATE motifs SET notes=? WHERE source=?",
+                               (json.dumps(new_factory_motifs[source]), source))
     # Preserve an existing customized Actions motif when upgrading its identity.
     legacy = connection.execute("SELECT notes, cooldown_seconds FROM motifs WHERE source='github-actions'").fetchone()
     if legacy:
         default_github = (json.dumps([[392, 0.06, 0.025], [587, 0.07, 0.025], [784, 0.10, 0.0]]), 45)
         current_github = connection.execute("SELECT notes, cooldown_seconds FROM motifs WHERE source='github'").fetchone()
-        if current_github == default_github:
+        if current_github == default_github or (current_github and json.loads(current_github[0]) == new_factory_motifs["github"] and current_github[1] == 45):
             connection.execute("UPDATE motifs SET notes=?, cooldown_seconds=? WHERE source='github'", legacy)
         connection.execute("DELETE FROM motifs WHERE source='github-actions'")
     connection.commit()
