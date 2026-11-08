@@ -70,4 +70,4 @@ def test_fault_injection_is_exercised_by_ci_without_production_paths():
     assert "previous-manifest.json" in ci
     assert "published-manifest.json" in ci
     assert "cmp " in ci
-    assert "sudo -n ansible-playbook" in ci
+    assert 'sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml' in ci
