@@ -94,7 +94,7 @@ def main():
         except (ValueError, TypeError, UnicodeError):
             reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid request"}}
         if reply is not None:
-            sys.stdout.write(json.dumps(reply, separators=(",", ":")) + "\\n")
+            sys.stdout.write(json.dumps(reply, separators=(",", ":")) + "\n")
             sys.stdout.flush()
 
 
