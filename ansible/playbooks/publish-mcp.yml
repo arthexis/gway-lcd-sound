@@ -1,0 +1,57 @@
+---
+# Explicit opt-in only. Never included from install.yml or deploy.sh.
+- name: Publish pinned LCD Sound MCP provider
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    lcd_sound_release_root: /home/arthe/.local/share/gway-lcd-sound/mcp-releases
+    lcd_sound_manifest_dir: /etc/gway-mcp-providers
+    lcd_sound_manifest_path: /etc/gway-mcp-providers/lcd_sound.json
+  tasks:
+    - name: Require root and immutable SHA
+      ansible.builtin.assert:
+        that:
+          - lookup('pipe', 'id -u') == '0'
+          - lcd_sound_revision is defined
+          - lcd_sound_revision is match('^[a-f0-9]{40}$')
+    - name: Inspect release without following links
+      ansible.builtin.stat:
+        path: "{{ lcd_sound_release_root }}/{{ lcd_sound_revision }}"
+        follow: false
+      register: release
+    - name: Require preinstalled immutable release
+      ansible.builtin.assert:
+        that:
+          - release.stat.isdir | default(false)
+          - not (release.stat.islnk | default(false))
+    - name: Inspect MCP provider and dispatcher
+      ansible.builtin.stat:
+        path: "{{ lcd_sound_release_root }}/{{ lcd_sound_revision }}/scripts/gway/{{ item }}"
+        follow: false
+      loop:
+        - lcd_sound_mcp.py
+        - gway-lcd-sound
+        - lcd_control.py
+        - sound.sh
+      register: files
+    - name: Require regular release-owned files
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg | default(false)
+          - not (item.stat.islnk | default(false))
+      loop: "{{ files.results }}"
+    - name: Ensure root-owned provider registry exists
+      ansible.builtin.file:
+        path: "{{ lcd_sound_manifest_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Publish pinned manifest atomically and idempotently
+      ansible.builtin.copy:
+        dest: "{{ lcd_sound_manifest_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': '/usr/bin/python3', 'argv': ['/usr/bin/python3', lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd_sound_mcp.py']} | to_json }}\n"
