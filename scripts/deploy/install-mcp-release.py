@@ -6,12 +6,11 @@ import io
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import tarfile
 import tempfile
 
-REQUIRED = ("scripts/gway/lcd_sound_mcp.py", "scripts/gway/gway-lcd-sound",
+REQUIRED = ("scripts/gway/lcd-sound-mcp", "scripts/gway/lcd_sound_mcp.py", "scripts/gway/gway-lcd-sound",
             "scripts/gway/lcd_control.py", "scripts/gway/sound.sh")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 
@@ -29,7 +28,7 @@ def check(root):
         path = root / name
         if path.is_symlink() or not path.is_file():
             raise ValueError("missing_or_symlinked_release_file:" + name)
-    if not os.access(root / REQUIRED[1], os.X_OK):
+    if not os.access(root / REQUIRED[0], os.X_OK):
         raise ValueError("dispatcher_not_executable")
 
 
@@ -69,6 +68,8 @@ def install(source, releases, revision):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(tar.extractfile(member).read())
                     target.chmod(member.mode & 0o755)
+        (staged / REQUIRED[0]).chmod(0o755)
+        (staged / "scripts/gway/gway-lcd-sound").chmod(0o755)
         check(staged)
         (staged / ".mcp-release-digest").write_text(digest(staged) + "\n")
         # Publish only after every validation succeeds; same filesystem atomic rename.
