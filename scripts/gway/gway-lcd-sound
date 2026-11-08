@@ -8,7 +8,9 @@ Usage: gway-lcd-sound COMMAND [ARGS...]
 
 Commands:
   lcd monitor eth0 [OPTIONS]   Run the Ethernet LCD monitor.
-  lcd status                   Inspect LCD service state (read-only).
+  lcd status                   Inspect LCD overlay (read-only).
+  lcd show LINE1 [LINE2]       Display a temporary LCD overlay.
+  lcd clear                    Clear only the owned overlay.
   sound status [--json]        Inspect mute state (read-only).
   sound play NAME [OPTIONS]    Play a named sound.
   sound mute|unmute|toggle     Change runtime mute state.
@@ -40,6 +42,11 @@ script_dir="$(cd -P -- "$(dirname "$script_path")" && pwd)"
 command="${1:-}"
 case "$command" in
   lcd)
+    case "${2:-}" in
+      status|show|clear) shift; exec python3 "$script_dir/lcd_control.py" "$@" ;;
+      monitor) ;;
+      *) usage >&2; exit 64 ;;
+    esac
     [[ "${2:-}" == "monitor" ]] || { usage >&2; exit 64; }
     [[ "${3:-}" == "eth0" ]] || { usage >&2; exit 64; }
     shift 3
