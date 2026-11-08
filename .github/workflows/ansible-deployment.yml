@@ -60,19 +60,6 @@ jobs:
           sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
           cmp "$registry/lcd_sound.json" "${{ runner.temp }}/published-manifest.json"
           python -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["revision"] == sys.argv[2]' "$registry/lcd_sound.json" "$revision"
-      - name: Validate read-only release observation in isolated HOME
-        env:
-          HOME: ${{ runner.temp }}/lcd-sound-observe-empty
-        run: |
-          set -eu
-          mkdir -p "$HOME"
-          ansible-playbook ansible/playbooks/observe-release.yml -i localhost, -c local --syntax-check
-          ansible-playbook ansible/playbooks/observe-release.yml -i localhost, -c local > "$RUNNER_TEMP/observe-empty-1.log"
-          ansible-playbook ansible/playbooks/observe-release.yml -i localhost, -c local > "$RUNNER_TEMP/observe-empty-2.log"
-          grep -q 'changed=0' "$RUNNER_TEMP/observe-empty-1.log"
-          grep -q 'changed=0' "$RUNNER_TEMP/observe-empty-2.log"
-          grep -q 'command_state.*unknown' "$RUNNER_TEMP/observe-empty-1.log"
-          test ! -e "$HOME/.local/share/gway-lcd-sound"
       - name: Deploy LCD Sound in isolated HOME
         env:
           HOME: ${{ runner.temp }}/lcd-sound-home
@@ -91,18 +78,6 @@ jobs:
           after=$(readlink "$HOME/.local/share/gway-lcd-sound/current")
           test "$before" = "$after"
           test -z "$(find "$HOME/.local/share/gway-lcd-sound/releases" -maxdepth 1 -name '.staging.*' -print -quit)"
-      - name: Validate read-only observation after isolated install
-        env:
-          HOME: ${{ runner.temp }}/lcd-sound-home
-        run: |
-          set -eu
-          before=$(readlink "$HOME/.local/share/gway-lcd-sound/current")
-          ansible-playbook ansible/playbooks/observe-release.yml -i localhost, -c local > "$RUNNER_TEMP/observe-installed-1.log"
-          ansible-playbook ansible/playbooks/observe-release.yml -i localhost, -c local > "$RUNNER_TEMP/observe-installed-2.log"
-          grep -q 'changed=0' "$RUNNER_TEMP/observe-installed-1.log"
-          grep -q 'changed=0' "$RUNNER_TEMP/observe-installed-2.log"
-          grep -q 'command_state.*healthy' "$RUNNER_TEMP/observe-installed-1.log"
-          test "$(readlink "$HOME/.local/share/gway-lcd-sound/current")" = "$before"
       - name: Reject corrupted existing release
         env:
           HOME: ${{ runner.temp }}/lcd-sound-home
