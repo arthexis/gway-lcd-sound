@@ -43,3 +43,20 @@ def test_two_tools_are_execute_only():
     spec.loader.exec_module(module)
     assert {tool["name"] for tool in module.TOOLS} == {"lcd", "sound"}
     assert all(tool["annotations"]["readOnlyHint"] is False for tool in module.TOOLS)
+
+def test_manifest_publication_has_verified_rollback():
+    source = PLAYBOOK.read_text()
+    assert "block:" in source and "rescue:" in source
+    assert "previous_manifest" in source
+    assert "published_manifest" in source
+    assert "Restore previous manifest atomically" in source
+    assert "Remove new manifest if no previous state existed" in source
+    assert "Fail closed after rollback" in source
+
+
+def test_staging_playbook_is_opt_in_and_full_sha():
+    source = (ROOT / "ansible/playbooks/stage-mcp-release.yml").read_text()
+    assert "install-mcp-release.py" in source
+    assert "^[a-f0-9]{40}$" in source
+    assert "ansible_user_uid | int != 0" in source
+    assert "stage-mcp-release.yml" not in (ROOT / "deploy.sh").read_text()
