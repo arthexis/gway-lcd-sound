@@ -13,6 +13,14 @@ The provider validates arguments, rejects unknown keys and actions, invokes the 
 
 The provider is source-only in this PR: no root-owned manifest is published. Before enabling, verify the installed release executable, root-owned manifest pinned to an immutable SHA, node relay execute-scope checks, gateway routing scope classification, and positive/negative end-to-end tests. Historical `/usr/local/bin/sound` and `~/.local/bin/sound` belong to gway-home-tools and must not be overwritten. Direct `lcd` wrapper is present but not installed.
 
-## Opt-in publication and remaining release prerequisite
+## Opt-in full-SHA release and manifest publication
 
-`ansible/playbooks/publish-mcp.yml` is deliberately not called by the existing install/deploy flows. It only publishes a manifest when a preinstalled `mcp-releases/<full-40-character-SHA>` release exists. The current general LCD Sound Ansible installer uses a **12-character SHA** in `releases/`, so that installer **does not satisfy** the MCP release prerequisite. A separate full-SHA immutable release staging/promotion flow and rollback/convergence tests are still required before deployment. Do not point the manifest at `current` or a short-SHA release.
+Two separate Ansible playbooks exist; neither is included in the default installer/deploy script:
+
+1. `ansible/playbooks/stage-mcp-release.yml` runs as the non-root node owner with `lcd_sound_revision=<full 40-hex SHA>`. It invokes `scripts/deploy/install-mcp-release.py`, archives the committed `scripts/gway` tree (including `sound_engine` and `lcd_engine` dependencies), validates the pinned entrypoints, computes a complete-file digest, and atomically renames staging to `mcp-releases/<SHA>`. Re-running an intact release is a no-op; a changed release is rejected. A failure before promotion leaves the previous release intact.
+
+2. `ansible/playbooks/publish-mcp.yml` runs separately as root with the same SHA. It verifies a pinned executable `lcd-sound-mcp`, rejects symlinked manifest and registry paths, atomically publishes the root-owned `/etc/gway-mcp-providers/lcd_sound.json`, reads it back and restores the previous manifest (or removes the new one) on verification failure.
+
+The existing default installer uses short SHA releases and is deliberately unchanged. The historical `sound` symlinks are not touched. **Neither playbook has been run against a node.** Execute-only authorization is enforced by the existing authenticated federation before dispatch, not by client-provided MCP parameters.
+
+Offline tests exercise release idempotence, modified-release rejection, SHA mismatch, staging failure, runtime dependencies and manifest publication contract. Full live authorization negative tests and current-head CI are required before deployment or merge.
