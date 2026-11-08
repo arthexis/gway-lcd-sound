@@ -168,10 +168,7 @@ def gpio_muted():
 
 
 def playback_muted():
-    return sound_mute.status()["muted"] or gpio_muted() or os.path.exists(os.path.join(
-        os.environ.get("CODEX_SOUND_HOOK_STATE_DIR",
-                       "/home/arthe/.local/state/codex-sound-hooks"), "silent"))
-
+    return sound_mute.status()["muted"]
 
 def repeat_playback(callback, args):
     for iteration in range(args.repeat):
