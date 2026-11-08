@@ -45,6 +45,7 @@ commands=(
   github-actions-job-completed:github-actions-job-completed
   gway-app-observer:gway_app_observer.py
   gway-lcd-sound:gway-lcd-sound
+  sound:sound.sh
 )
 manpages=(gway-lcd-sound.1)
 legacy_helpers=(
@@ -106,6 +107,12 @@ PY
 }
 activate() {
   local target="$1" temp
+  # Do not replace a host-owned sound executable without an explicit migration.
+  if [[ -e "$bin_dir/sound" || -L "$bin_dir/sound" ]]; then
+    [[ -L "$bin_dir/sound" && "$(readlink "$bin_dir/sound")" == "$current/scripts/gway/sound.sh" ]] || {
+      echo "Unmanaged sound executable exists; migration required" >&2; return 1;
+    }
+  fi
   [[ -d "$target/scripts/gway" ]] || { echo "Invalid release: $target" >&2; return 1; }
   mkdir -p "$prefix" "$bin_dir" "$man_dir"
   temp="$prefix/.current.$$"
@@ -166,7 +173,7 @@ case "$action" in
         mkdir -p "$staging/scripts/deploy/systemd/user"
         cp "$source_dir/scripts/deploy/systemd/user/$observer_unit" "$staging/scripts/deploy/systemd/user/$observer_unit"
       fi
-      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed" "$staging/scripts/gway/gway-lcd-sound"
+      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed" "$staging/scripts/gway/gway-lcd-sound" "$staging/scripts/gway/sound.sh" "$staging/scripts/gway/gway-toggle-gpio-sound-mute"
       PYTHONDONTWRITEBYTECODE=1 python3 - "$staging/scripts/gway" <<'PY'
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))
