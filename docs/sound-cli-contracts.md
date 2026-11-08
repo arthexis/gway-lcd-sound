@@ -12,10 +12,8 @@
 ## gway-001 ownership audit (read-only)
 `~/.local/bin/sound -> /usr/local/bin/sound -> /usr/local/libexec/gway-home-tools/sound.sh`.
 Current `gway-lcd-sound/current` points at release `4a908110fc31`.
-The release installer must not replace this externally owned symlink. Before deployment, plan a separate approved migration of producers and the absolute `/usr/local/bin/sound` entrypoint; verify checksums/rollback and do not assume a new `~/.local/bin/sound` link takes precedence for all producers.
+The release installer must not replace this externally owned symlink. Before deployment, plan a separate approved migration of producers and the absolute `/usr/local/bin/sound` entrypoint; verify ownership and compatibility and do not assume a new `~/.local/bin/sound` link takes precedence for all producers.
 
-## Explicit user-link migration (not part of install)
+## Explicit fail-forward user-link adoption
 
-`scripts/deploy/migrate-sound-command.sh inspect|adopt|verify|rollback` provides a separate opt-in migration for `~/.local/bin/sound` only. Adoption requires the existing symlink to point at `/usr/local/bin/sound`, checks the new release executable, records the original destination in a private manifest and atomically replaces the user-level link. Repeated adoption is idempotent; rollback atomically restores the original user-level symlink and refuses unexpected edits. The script never writes `/usr/local/bin/sound` or `/usr/local/libexec/gway-home-tools/sound.sh`.
-
-**Activation caveat:** absolute callers of `/usr/local/bin/sound` remain on the original implementation. Before production activation, audit every consumer and ensure feature parity; the migration script must be run only with explicit separate authorization. Normal install, verify, rollback and CI never call it.
+`scripts/deploy/migrate-sound-command.sh inspect|adopt|verify` supports an opt-in, idempotent replacement of the user-level `~/.local/bin/sound` link only. It refuses unexpected ownership and never writes `/usr/local/bin/sound` or its `gway-home-tools` target. No rollback manifest or automatic restoration is maintained. Failures are fixed forward and the corrected release is revalidated. Absolute callers of `/usr/local/bin/sound` continue using the old implementation until separately migrated. Normal installation does not run adoption; host activation requires explicit authorization.
