@@ -48,15 +48,16 @@ jobs:
           mkdir -p "$registry"
           printf '%s\n' '{"source_id":"previous","revision":"prior"}' > "$registry/lcd_sound.json"
           cp "$registry/lcd_sound.json" "${{ runner.temp }}/previous-manifest.json"
+          ansible_bin=$(command -v ansible-playbook)
           vars="lcd_sound_revision=$revision lcd_sound_release_root=$releases lcd_sound_manifest_dir=$registry lcd_sound_manifest_path=$registry/lcd_sound.json"
-          if sudo -n ansible-playbook ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars lcd_sound_test_inject_verify_failure=true"; then
+          if sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars lcd_sound_test_inject_verify_failure=true"; then
             echo "Fault-injected publication unexpectedly succeeded" >&2
             exit 1
           fi
           cmp "$registry/lcd_sound.json" "${{ runner.temp }}/previous-manifest.json"
-          sudo -n ansible-playbook ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
+          sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
           cp "$registry/lcd_sound.json" "${{ runner.temp }}/published-manifest.json"
-          sudo -n ansible-playbook ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
+          sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
           cmp "$registry/lcd_sound.json" "${{ runner.temp }}/published-manifest.json"
           python -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["revision"] == sys.argv[2]' "$registry/lcd_sound.json" "$revision"
       - name: Deploy LCD Sound in isolated HOME
