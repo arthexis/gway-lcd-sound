@@ -15,7 +15,7 @@ mkdir -p "$state"
 [[ ! -L "$state" && ! -L "$manifest" ]] || { echo "Unsafe migration state" >&2; exit 2; }
 exec 9>"$state/sound-migration.lock"
 flock -x 9
-original="/usr/local/bin/sound"
+original="${GWAY_SOUND_ORIGINAL_COMMAND:-/usr/local/bin/sound}"
 if [[ "$action" == inspect ]]; then
   printf 'current=%s\ntarget=%s\n' "$(readlink "$link" 2>/dev/null || echo '<not a symlink>')" "$target"
   exit 0
