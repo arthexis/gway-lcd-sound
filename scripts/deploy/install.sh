@@ -45,7 +45,6 @@ commands=(
   github-actions-job-completed:github-actions-job-completed
   gway-app-observer:gway_app_observer.py
   gway-lcd-sound:gway-lcd-sound
-  sound:sound.sh
 )
 manpages=(gway-lcd-sound.1)
 legacy_helpers=(
@@ -107,12 +106,6 @@ PY
 }
 activate() {
   local target="$1" temp
-  # Do not replace a host-owned sound executable without an explicit migration.
-  if [[ -e "$bin_dir/sound" || -L "$bin_dir/sound" ]]; then
-    [[ -L "$bin_dir/sound" && "$(readlink "$bin_dir/sound")" == "$current/scripts/gway/sound.sh" ]] || {
-      echo "Unmanaged sound executable exists; migration required" >&2; return 1;
-    }
-  fi
   [[ -d "$target/scripts/gway" ]] || { echo "Invalid release: $target" >&2; return 1; }
   mkdir -p "$prefix" "$bin_dir" "$man_dir"
   temp="$prefix/.current.$$"
