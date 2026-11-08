@@ -25,7 +25,7 @@ def digest(root):
             continue
         name = path.relative_to(root).as_posix()
         data = path.read_bytes()
-        h.update(name.encode() + b"\\0" + len(data).to_bytes(8, "big") + data)
+        h.update(name.encode() + bytes([0]) + len(data).to_bytes(8, "big") + data)
     return h.hexdigest()
 
 
@@ -48,6 +48,8 @@ def install(source, releases, revision):
     if actual != revision:
         raise ValueError("revision_mismatch")
     releases.mkdir(parents=True, exist_ok=True)
+    if releases.is_symlink():
+        raise ValueError("symlinked_release_root")
     destination = releases / revision
     if destination.exists() or destination.is_symlink():
         if destination.is_symlink() or not destination.is_dir():
