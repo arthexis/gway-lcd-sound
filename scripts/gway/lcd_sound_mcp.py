@@ -27,7 +27,7 @@ TOOLS = (
 
 
 def command_for(name, args):
-    if name not in ACTIONS or type(args) is not dict or args.get("action") not in ACTIONS[name]:
+    if type(name) is not str or name not in ACTIONS or type(args) is not dict or type(args.get("action")) is not str or args["action"] not in ACTIONS[name]:
         raise ValueError("invalid_tool_or_action")
     action = args["action"]
     keys = {"action"}
@@ -44,7 +44,7 @@ def command_for(name, args):
         command += [line1, line2, "--seconds", str(seconds)]
     elif name == "sound" and action == "play":
         keys.add("name")
-        if args.get("name") not in CUES:
+        if type(args.get("name")) is not str or args["name"] not in CUES:
             raise ValueError("invalid_arguments")
         command.append(args["name"])
     if set(args) - keys:
