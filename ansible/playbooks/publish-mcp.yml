@@ -73,10 +73,45 @@
         that:
           - not (existing_manifest.stat.islnk | default(false))
           - not (existing_manifest.stat.exists | default(false)) or (existing_manifest.stat.isreg | default(false))
-    - name: Publish pinned manifest atomically and idempotently
-      ansible.builtin.copy:
-        dest: "{{ lcd_sound_manifest_path }}"
-        owner: root
-        group: root
-        mode: '0644'
-        content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp', 'argv': [lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp']} | to_json }}\n"
+    - name: Snapshot existing manifest for rollback
+      ansible.builtin.slurp:
+        src: "{{ lcd_sound_manifest_path }}"
+      register: previous_manifest
+      when: existing_manifest.stat.exists | default(false)
+    - name: Publish and verify pinned manifest, restoring prior state on failure
+      block:
+      - name: Publish pinned manifest atomically and idempotently
+        ansible.builtin.copy:
+          dest: "{{ lcd_sound_manifest_path }}"
+          owner: root
+          group: root
+          mode: '0644'
+          content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp', 'argv': [lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp']} | to_json }}\n"
+  
+        - name: Read back published manifest
+          ansible.builtin.slurp:
+            src: "{{ lcd_sound_manifest_path }}"
+          register: published_manifest
+        - name: Verify exact pinned manifest revision and executable
+          ansible.builtin.assert:
+            that:
+              - (published_manifest.content | b64decode | from_json).revision == lcd_sound_revision
+              - (published_manifest.content | b64decode | from_json).executable == lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp'
+              - (published_manifest.content | b64decode | from_json).source_id == 'lcd_sound'
+      rescue:
+        - name: Restore previous manifest atomically
+          ansible.builtin.copy:
+            dest: "{{ lcd_sound_manifest_path }}"
+            owner: root
+            group: root
+            mode: '0644'
+            content: "{{ previous_manifest.content | b64decode }}"
+          when: existing_manifest.stat.exists | default(false)
+        - name: Remove new manifest if no previous state existed
+          ansible.builtin.file:
+            path: "{{ lcd_sound_manifest_path }}"
+            state: absent
+          when: not (existing_manifest.stat.exists | default(false))
+        - name: Fail closed after rollback
+          ansible.builtin.fail:
+            msg: LCD Sound MCP publication failed; previous manifest restored
