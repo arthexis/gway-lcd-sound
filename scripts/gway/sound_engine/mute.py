@@ -18,7 +18,7 @@ def legacy_paths():
 def status():
     runtime_muted = state_path().exists()
     legacy_codex = legacy_paths()[1].exists()
-    return {"muted": runtime_muted or legacy_codex,
+    return {"muted": runtime_muted,
             "runtime_muted": runtime_muted,
             "legacy_codex_muted": legacy_codex}
 
@@ -40,7 +40,7 @@ def change(action):
             os.chmod(path, 0o600)
         else:
             path.unlink(missing_ok=True)
-            # Clear historical markers to make unmute effective.
+            # Remove legacy marker, but never let persistent Codex state mute playback.
             for legacy in legacy_paths():
                 if legacy.is_symlink():
                     raise OSError("unsafe legacy mute marker")
