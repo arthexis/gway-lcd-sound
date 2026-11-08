@@ -16,11 +16,8 @@ usage() {
 case "${1:-}" in
   "") ;;
   --status)
-    if [[ -e "$mute_file" ]]; then
-      printf 'muted\n'
-    else
-      printf 'unmuted\n'
-    fi
+    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -m sound_engine.mute status
     exit 0
     ;;
   --help|-h)
@@ -74,20 +71,13 @@ quiet_gpio_pin() {
 mkdir -p "$(dirname "$mute_file")" "$state_dir"
 chmod 700 "$(dirname "$mute_file")" "$state_dir" 2>/dev/null || true
 
-if [[ -e "$mute_file" ]]; then
-  rm -f "$mute_file"
-  state="unmuted"
-  lcd_event "GPIO SOUND" "UNMUTED"
-else
-  {
-    printf 'muted_at=%s\n' "$(timestamp)"
-    printf 'card_id=%s\n' "$card_id"
-    printf 'pid=%s\n' "$$"
-  } >"$mute_file"
-  chmod 600 "$mute_file" 2>/dev/null || true
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+state="$(PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -m sound_engine.mute toggle)"
+if [[ "$state" == "muted" ]]; then
   quiet_gpio_pin
-  state="muted"
   lcd_event "GPIO SOUND" "MUTED"
+else
+  lcd_event "GPIO SOUND" "UNMUTED"
 fi
 
 printf '{"timestamp":"%s","event":"toggle_gpio_sound_mute","state":"%s","mute_file":"%s","card_id":"%s"}\n' \
