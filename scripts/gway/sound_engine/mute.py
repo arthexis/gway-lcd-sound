@@ -1,0 +1,68 @@
+"""Persistent mute state shared by sound playback and CLI.
+
+The legacy runtime and Codex markers remain effective for compatibility.
+"""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+
+def state_path():
+    return Path(os.environ.get("GWAY_SOUND_MUTE_STATE_FILE") or
+                (Path(os.environ.get("XDG_STATE_HOME", str(Path.home()/".local/state"))) / "gway-sound" / "muted"))
+
+def legacy_paths():
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return (
+        Path(os.environ.get("NODE_SOUND_GPIO_MUTE_FILE") or os.environ.get("GWAY_SOUND_GPIO_MUTE_FILE") or f"{runtime}/gway-sound/gpio-muted"),
+        Path(os.environ.get("CODEX_SOUND_HOOK_STATE_DIR", "/home/arthe/.local/state/codex-sound-hooks")) / "silent",
+    )
+
+def status():
+    persistent = state_path().exists()
+    legacy_gpio, legacy_codex = (p.exists() for p in legacy_paths())
+    return {"muted": persistent or legacy_gpio or legacy_codex,
+            "persistent_muted": persistent,
+            "legacy_gpio_muted": legacy_gpio,
+            "legacy_codex_muted": legacy_codex}
+
+def change(action):
+    path = state_path()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.parent.is_symlink() or path.is_symlink():
+        raise OSError("unsafe mute state path")
+    lock = path.with_name("mute.lock")
+    if lock.is_symlink():
+        raise OSError("unsafe mute lock")
+    with open(lock, "a+") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        old = status()["muted"]
+        desired = not old if action == "toggle" else action == "mute"
+        if desired:
+            with open(path, "w") as out:
+                out.write("muted\n")
+            os.chmod(path, 0o600)
+        else:
+            path.unlink(missing_ok=True)
+            # Clear both historical markers to make unmute effective.
+            for legacy in legacy_paths():
+                if legacy.is_symlink():
+                    raise OSError("unsafe legacy mute marker")
+                legacy.unlink(missing_ok=True)
+        return status()
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="sound")
+    parser.add_argument("action", choices=("status", "mute", "unmute", "toggle"))
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        result = status() if args.action == "status" else change(args.action)
+    except OSError as exc:
+        parser.exit(1, f"sound: {exc}\n")
+    print(json.dumps(result, sort_keys=True) if args.json else ("muted" if result["muted"] else "unmuted"))
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
