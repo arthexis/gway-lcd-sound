@@ -11,6 +11,7 @@ trap cleanup_gpio EXIT
 
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
+from sound_engine import mute as sound_mute
 import json
 import sqlite3
 import fcntl
@@ -165,7 +166,7 @@ def gpio_muted():
 
 
 def playback_muted():
-    return gpio_muted() or os.path.exists(os.path.join(
+    return sound_mute.status()["muted"] or gpio_muted() or os.path.exists(os.path.join(
         os.environ.get("CODEX_SOUND_HOOK_STATE_DIR",
                        "/home/arthe/.local/state/codex-sound-hooks"), "silent"))
 
@@ -711,6 +712,8 @@ def build_parser():
 
 
 def main(argv):
+    if argv and argv[0] in ("status", "mute", "unmute", "toggle"):
+        return sound_mute.main(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
     args.volume = clamp(args.volume, 0.0, 1.0)
