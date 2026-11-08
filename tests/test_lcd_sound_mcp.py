@@ -21,7 +21,7 @@ def test_argument_validation_and_parity():
     assert mcp.command_for("lcd", {"action": "show", "line1": "hello", "seconds": 10})[1:] == ["lcd", "show", "hello", "", "--seconds", "10"]
     assert mcp.command_for("sound", {"action": "play", "name": "notice"})[1:] == ["sound", "play", "notice"]
     for name, args in [("sound", {"action": "play", "name": "rm -rf /"}),
-                       ("lcd", {"action": "show", "line1": "x\\ny"}),
+                       ("lcd", {"action": "show", "line1": "x\ny"}),
                        ("lcd", {"action": "show", "line1": "x", "seconds": 301}),
                        ("sound", {"action": "status", "extra": "x"}),
                        ("lcd", {"action": "clear", "path": "/tmp/x"})]:
