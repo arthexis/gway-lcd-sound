@@ -16,10 +16,16 @@ SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
 def digest(root):
+    """Hash all release files, not only entrypoints and their direct dependencies."""
     h = hashlib.sha256()
-    for path in REQUIRED:
-        data = (root / path).read_bytes()
-        h.update(path.encode() + b"\0" + len(data).to_bytes(8, "big") + data)
+    for path in sorted((root / "scripts/gway").rglob("*")):
+        if path.is_symlink():
+            raise ValueError("symlinked_release_content")
+        if not path.is_file():
+            continue
+        name = path.relative_to(root).as_posix()
+        data = path.read_bytes()
+        h.update(name.encode() + b"\\0" + len(data).to_bytes(8, "big") + data)
     return h.hexdigest()
 
 
@@ -59,7 +65,7 @@ def install(source, releases, revision):
                 parts = Path(member.name).parts
                 if member.name.startswith("/") or ".." in parts or member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
                     raise ValueError("unsafe_archive_entry")
-                if member.name not in REQUIRED and not any(member.name == str(Path(p).parent) or str(Path(p).parent).startswith(member.name + "/") for p in REQUIRED):
+                if member.name not in ("scripts", "scripts/gway") and not member.name.startswith("scripts/gway/"):
                     continue
                 target = staged / member.name
                 if member.isdir():
