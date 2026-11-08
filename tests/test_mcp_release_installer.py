@@ -19,6 +19,9 @@ def repo(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("#!/bin/sh\nexit 0\n")
         path.chmod(0o755)
+    dependency = source / "scripts/gway/sound_engine/events.py"
+    dependency.parent.mkdir(parents=True, exist_ok=True)
+    dependency.write_text("EVENT = 1\\n")
     subprocess.run(["git", "-C", str(source), "add", "."], check=True)
     subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "fixture"], check=True)
     revision = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
@@ -29,6 +32,7 @@ def test_install_second_convergence_and_tamper_detection(tmp_path):
     source, revision = repo(tmp_path)
     releases = tmp_path / "releases"
     assert installer.install(source, releases, revision) is True
+    assert (releases / revision / "scripts/gway/sound_engine/events.py").is_file()
     assert installer.install(source, releases, revision) is False
     assert not list(releases.glob(".staging.*"))
     (releases / revision / installer.REQUIRED[0]).write_text("tampered")
