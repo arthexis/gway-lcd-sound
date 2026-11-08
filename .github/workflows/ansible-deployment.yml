@@ -54,7 +54,13 @@ jobs:
             echo "Fault-injected publication unexpectedly succeeded" >&2
             exit 1
           fi
-          cmp "$registry/lcd_sound.json" "${{ runner.temp }}/previous-manifest.json"
+          if ! cmp "$registry/lcd_sound.json" "${{ runner.temp }}/previous-manifest.json"; then
+            echo "Expected prior manifest:"
+            cat "${{ runner.temp }}/previous-manifest.json"
+            echo "Actual after rollback:"
+            cat "$registry/lcd_sound.json"
+            exit 1
+          fi
           sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
           cp "$registry/lcd_sound.json" "${{ runner.temp }}/published-manifest.json"
           sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
