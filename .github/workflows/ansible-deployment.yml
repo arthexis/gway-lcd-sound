@@ -23,6 +23,43 @@ jobs:
         env:
           ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles
         run: ansible-playbook ansible/playbooks/install.yml -i localhost, -c local --syntax-check
+      - name: Validate opt-in MCP playbooks syntax without execution
+        run: |
+          ansible-playbook ansible/playbooks/stage-mcp-release.yml -i localhost, -c local --syntax-check
+          ansible-playbook ansible/playbooks/publish-mcp.yml -i localhost, -c local --syntax-check
+      - name: Exercise opt-in MCP staging in isolated HOME only
+        env:
+          HOME: ${{ runner.temp }}/lcd-sound-mcp-home
+        run: |
+          mkdir -p "$HOME"
+          revision=$(git rev-parse HEAD)
+          ansible-playbook ansible/playbooks/stage-mcp-release.yml -i localhost, -c local -e "lcd_sound_revision=$revision"
+          ansible-playbook ansible/playbooks/stage-mcp-release.yml -i localhost, -c local -e "lcd_sound_revision=$revision"
+          test -x "$HOME/.local/share/gway-lcd-sound/mcp-releases/$revision/scripts/gway/lcd-sound-mcp"
+          test -z "$(find "$HOME/.local/share/gway-lcd-sound/mcp-releases" -maxdepth 1 -name '.staging.*' -print -quit)"
+      - name: Exercise MCP manifest rollback and convergence in temporary CI paths
+        env:
+          HOME: ${{ runner.temp }}/lcd-sound-mcp-home
+        run: |
+          set -eu
+          revision=$(git rev-parse HEAD)
+          releases="$HOME/.local/share/gway-lcd-sound/mcp-releases"
+          registry="${{ runner.temp }}/mcp-registry-test"
+          mkdir -p "$registry"
+          printf '%s\n' '{"source_id":"previous","revision":"prior"}' > "$registry/lcd_sound.json"
+          cp "$registry/lcd_sound.json" "${{ runner.temp }}/previous-manifest.json"
+          ansible_bin=$(command -v ansible-playbook)
+          vars="lcd_sound_revision=$revision lcd_sound_release_root=$releases lcd_sound_manifest_dir=$registry lcd_sound_manifest_path=$registry/lcd_sound.json"
+          if sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars lcd_sound_test_inject_verify_failure=true"; then
+            echo "Fault-injected publication unexpectedly succeeded" >&2
+            exit 1
+          fi
+          python -c 'import json,sys; assert json.load(open(sys.argv[1])) == json.load(open(sys.argv[2]))' "$registry/lcd_sound.json" "${{ runner.temp }}/previous-manifest.json"
+          sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
+          cp "$registry/lcd_sound.json" "${{ runner.temp }}/published-manifest.json"
+          sudo -n "$ansible_bin" ansible/playbooks/publish-mcp.yml -i localhost, -c local -e "$vars"
+          cmp "$registry/lcd_sound.json" "${{ runner.temp }}/published-manifest.json"
+          python -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["revision"] == sys.argv[2]' "$registry/lcd_sound.json" "$revision"
       - name: Deploy LCD Sound in isolated HOME
         env:
           HOME: ${{ runner.temp }}/lcd-sound-home

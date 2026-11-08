@@ -7,10 +7,21 @@ usage() {
 Usage: gway-lcd-sound COMMAND [ARGS...]
 
 Commands:
-  monitor eth0 [OPTIONS]       Run the Ethernet LCD monitor.
+  lcd monitor eth0 [OPTIONS]   Run the Ethernet LCD monitor.
+  lcd status                   Inspect LCD overlay (read-only).
+  lcd show LINE1 [LINE2]       Display a temporary LCD overlay.
+  lcd clear                    Clear only the owned overlay.
+  sound status [--json]        Inspect mute state (read-only).
+  sound play NAME [OPTIONS]    Play a named sound.
+  sound mute|unmute|toggle     Change runtime mute state.
+  sound hotplug EVENT          Play a hotplug event sound.
+  sound mute toggle [--status] Toggle or inspect GPIO sound mute.
+  sound piano [OPTIONS]        Compose sound motifs.
+  monitor eth0 [OPTIONS]       Legacy alias for lcd monitor.
   hotplug EVENT                Play the event sound for a hotplug event.
   mute toggle [--status]       Toggle, or inspect, GPIO sound mute state.
-  piano [OPTIONS]             Compose and edit motifs/event sounds.\n  notify [OPTIONS]             Send a system notification.
+  piano [OPTIONS]             Compose and edit motifs/event sounds.
+  notify [OPTIONS]             Send a system notification.
 
 Each command replaces the corresponding legacy helper.  See gway-lcd-sound(1).
 EOF
@@ -30,6 +41,32 @@ script_dir="$(cd -P -- "$(dirname "$script_path")" && pwd)"
 
 command="${1:-}"
 case "$command" in
+  lcd)
+    case "${2:-}" in
+      status|show|clear) shift; exec python3 "$script_dir/lcd_control.py" "$@" ;;
+      monitor) ;;
+      *) usage >&2; exit 64 ;;
+    esac
+    [[ "${2:-}" == "monitor" ]] || { usage >&2; exit 64; }
+    [[ "${3:-}" == "eth0" ]] || { usage >&2; exit 64; }
+    shift 3
+    exec python3 "$script_dir/gway_eth0_node_lcd_monitor.py" --iface eth0 "$@"
+    ;;
+  sound)
+    [[ $# -ge 2 ]] || { usage >&2; exit 64; }
+    shift
+    case "$1" in
+      status) shift; exec bash "$script_dir/sound.sh" status "$@" ;;
+      play) shift; [[ $# -gt 0 ]] || { usage >&2; exit 64; }; exec bash "$script_dir/sound.sh" "$@" ;;
+      unmute|toggle) op="$1"; shift; exec bash "$script_dir/sound.sh" "$op" "$@" ;;
+      hotplug) shift; exec "$script_dir/gway-event-sound-hotplug" "$@" ;;
+      mute)
+        if [[ "${2:-}" == "toggle" ]]; then shift 2; exec "$script_dir/gway-toggle-gpio-sound-mute" "$@"; fi
+        shift; exec bash "$script_dir/sound.sh" mute "$@" ;;
+      piano) shift; exec python3 "$script_dir/gway-piano.py" "$@" ;;
+      *) usage >&2; exit 64 ;;
+    esac
+    ;;
   monitor)
     [[ "${2:-}" == "eth0" ]] || { usage >&2; exit 64; }
     shift 2
