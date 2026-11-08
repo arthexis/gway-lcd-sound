@@ -11,6 +11,14 @@ trap cleanup_gpio EXIT
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}"
 
+if [[ "${1:-}" == "mute" || "${1:-}" == "unmute" || "${1:-}" == "toggle" ]]; then
+  if [[ "${2:-}" == "--json" ]]; then
+    "$script_dir/gway-toggle-gpio-sound-mute" "$1" >/dev/null
+    exec python3 -m sound_engine.mute status --json
+  fi
+  [[ $# == 1 ]] || { echo "sound: unexpected arguments" >&2; exit 2; }
+  exec "$script_dir/gway-toggle-gpio-sound-mute" "$1"
+fi
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 from sound_engine import mute as sound_mute
