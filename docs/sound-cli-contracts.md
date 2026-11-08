@@ -6,7 +6,7 @@
 - `gway-lcd-sound mute toggle [--status]` and `gway-toggle-gpio-sound-mute [--status]` remain supported and use the same runtime marker.
 - Sound is **enabled after reboot**, because the runtime marker is removed. The historical persistent Codex `silent` marker is reported for diagnostics but is no longer an effective mute source.
 - State-changing CLI calls preserve the legacy LCD notification and event audit log; status is read-only.
-- The installer refuses to overwrite an unmanaged `~/.local/bin/sound`. A deliberate ownership migration is required before field deployment.
+- The installer **does not install or replace** `~/.local/bin/sound`. A separate, explicitly approved ownership migration is required before the new `sound` CLI can be activated on gway-001.
 - Tests must cover CLI entrypoints, LCD notification, concurrent toggles, legacy markers and reboot simulation. No deployment in PR #53.
 
 ## gway-001 ownership audit (read-only)
