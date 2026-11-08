@@ -57,3 +57,15 @@ def test_refuses_missing_release(tmp_path):
     target.unlink()
     assert run("adopt").returncode != 0
     assert link.resolve() == original
+
+def test_parallel_adoption_serializes_and_preserves_owner(tmp_path):
+    run, link, original, target, home = fixture(tmp_path)
+    env = dict(os.environ, HOME=str(home), GWAY_SOUND_ORIGINAL_COMMAND=str(original))
+    jobs = [subprocess.Popen(["bash", str(SCRIPT), "adopt"], env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True) for _ in range(6)]
+    results = [job.communicate(timeout=10) for job in jobs]
+    assert all(job.returncode == 0 for job in jobs), results
+    assert link.resolve() == target
+    assert run("verify").returncode == 0
+    assert original.read_text().endswith("old\n")
