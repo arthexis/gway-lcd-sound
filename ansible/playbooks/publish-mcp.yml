@@ -30,6 +30,7 @@
         path: "{{ lcd_sound_release_root }}/{{ lcd_sound_revision }}/scripts/gway/{{ item }}"
         follow: false
       loop:
+        - lcd-sound-mcp
         - lcd_sound_mcp.py
         - gway-lcd-sound
         - lcd_control.py
@@ -41,6 +42,10 @@
           - item.stat.isreg | default(false)
           - not (item.stat.islnk | default(false))
       loop: "{{ files.results }}"
+    - name: Require executable provider entrypoint
+      ansible.builtin.assert:
+        that:
+          - files.results[0].stat.executable | default(false)
     - name: Inspect existing provider registry without following symlinks
       ansible.builtin.stat:
         path: "{{ lcd_sound_manifest_dir }}"
@@ -58,10 +63,20 @@
         owner: root
         group: root
         mode: '0755'
+    - name: Inspect existing manifest without following symlinks
+      ansible.builtin.stat:
+        path: "{{ lcd_sound_manifest_path }}"
+        follow: false
+      register: existing_manifest
+    - name: Reject symlinked or nonregular manifest
+      ansible.builtin.assert:
+        that:
+          - not (existing_manifest.stat.islnk | default(false))
+          - not (existing_manifest.stat.exists | default(false)) or (existing_manifest.stat.isreg | default(false))
     - name: Publish pinned manifest atomically and idempotently
       ansible.builtin.copy:
         dest: "{{ lcd_sound_manifest_path }}"
         owner: root
         group: root
         mode: '0644'
-        content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': '/usr/bin/python3', 'argv': ['/usr/bin/python3', lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd_sound_mcp.py']} | to_json }}\n"
+        content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp', 'argv': [lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp']} | to_json }}\n"
