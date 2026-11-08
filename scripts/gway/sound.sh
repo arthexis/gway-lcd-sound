@@ -8,6 +8,8 @@ cleanup_gpio() {
 }
 
 trap cleanup_gpio EXIT
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}"
 
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
