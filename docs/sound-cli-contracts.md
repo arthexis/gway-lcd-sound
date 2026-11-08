@@ -8,3 +8,8 @@
 - State-changing CLI calls preserve the legacy LCD notification and event audit log; status is read-only.
 - The installer refuses to overwrite an unmanaged `~/.local/bin/sound`. A deliberate ownership migration is required before field deployment.
 - Tests must cover CLI entrypoints, LCD notification, concurrent toggles, legacy markers and reboot simulation. No deployment in PR #53.
+
+## gway-001 ownership audit (read-only)
+`~/.local/bin/sound -> /usr/local/bin/sound -> /usr/local/libexec/gway-home-tools/sound.sh`.
+Current `gway-lcd-sound/current` points at release `4a908110fc31`.
+The release installer must not replace this externally owned symlink. Before deployment, plan a separate approved migration of producers and the absolute `/usr/local/bin/sound` entrypoint; verify checksums/rollback and do not assume a new `~/.local/bin/sound` link takes precedence for all producers.
