@@ -7,9 +7,12 @@ cleanup_gpio() {
   fi
 }
 
-trap cleanup_gpio EXIT
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}"
+if [[ "${1:-}" == "status" ]]; then
+  exec python3 -m sound_engine.mute "$@"
+fi
+trap cleanup_gpio EXIT
 
 if [[ "${1:-}" == "mute" || "${1:-}" == "unmute" || "${1:-}" == "toggle" ]]; then
   if [[ "${2:-}" == "--json" ]]; then
