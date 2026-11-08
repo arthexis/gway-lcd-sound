@@ -7,7 +7,7 @@ cleanup_gpio() {
   fi
 }
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+script_dir="$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")"
 export PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}"
 if [[ "${1:-}" == "status" ]]; then
   exec python3 -m sound_engine.mute "$@"
