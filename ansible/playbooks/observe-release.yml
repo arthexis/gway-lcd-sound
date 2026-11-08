@@ -34,10 +34,9 @@
     - name: Publish read-only observation
       ansible.builtin.debug:
         msg:
-          schema_version: 1
           component: gway-lcd-sound
           recovery_strategy: fail_forward
           activated_release: "{{ sound_current.stat.lnk_source | default(none) if sound_current.stat.islnk | default(false) else none }}"
-          runtime_state: "{{ 'healthy' if (sound_current.stat.islnk | default(false)) and (sound_command.stat.islnk | default(false)) and (sound_probe.rc | default(1)) == 0 else 'unknown' }}"
+          command_state: "{{ 'healthy' if (sound_current.stat.islnk | default(false)) and (sound_command.stat.islnk | default(false)) and (sound_probe.rc | default(1)) == 0 else 'unknown' }}"
           evidence: "{{ (['active_release_symlink'] if sound_current.stat.islnk | default(false) else []) + (['public_command_help'] if (sound_probe.rc | default(1)) == 0 else []) }}"
           read_only: true
