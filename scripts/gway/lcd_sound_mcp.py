@@ -1,6 +1,5 @@
 """Two-tool LCD/Sound MCP stdio provider. Gateway enforces OAuth using readOnlyHint."""
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -10,14 +9,16 @@ DISPATCHER = HERE / "gway-lcd-sound"
 CUES = frozenset(("ok", "notice", "email", "attention", "warning", "error", "noise", "busy", "critical", "undervoltage"))
 ACTIONS = {"lcd": {"status", "show", "clear"}, "sound": {"status", "play", "mute", "unmute", "toggle"}}
 TOOLS = (
-    {"name": "lcd", "description": "LCD status (read), show or clear (execute).",
+    {"name": "lcd", "description": "LCD status, show or clear; requires execute authorization.",
+     "annotations": {"readOnlyHint": False},
      "inputSchema": {"type": "object", "properties": {
          "action": {"type": "string", "enum": sorted(ACTIONS["lcd"])},
          "line1": {"type": "string", "maxLength": 160},
          "line2": {"type": "string", "maxLength": 160},
          "seconds": {"type": "integer", "minimum": 1, "maximum": 300}},
          "required": ["action"], "additionalProperties": False}},
-    {"name": "sound", "description": "Sound status (read), play/mute/unmute/toggle (execute).",
+    {"name": "sound", "description": "Sound status, play, mute, unmute or toggle; requires execute authorization.",
+     "annotations": {"readOnlyHint": False},
      "inputSchema": {"type": "object", "properties": {
          "action": {"type": "string", "enum": sorted(ACTIONS["sound"])},
          "name": {"type": "string", "enum": sorted(CUES)}},
@@ -51,11 +52,9 @@ def command_for(name, args):
     return command
 
 
-def execute(name, args, *, authorized_scopes):
+def execute(name, args):
+    """Only callable from node-owned stdio process behind authenticated relay."""
     command = command_for(name, args)
-    required = "gway:remote" if args["action"] == "status" else "gway:execute"
-    if required not in authorized_scopes:
-        raise PermissionError("permission_denied")
     result = subprocess.run(command, capture_output=True, text=True, timeout=15, check=False)
     if result.returncode:
         return {"error": "command_failed", "exit_code": result.returncode}
@@ -77,11 +76,14 @@ def handle(request):
     elif method == "tools/list":
         result = {"tools": list(TOOLS)}
     elif method == "tools/call":
-        # The existing federated gateway authenticates calls and applies the action
-        # scope policy before forwarding; stdio has no authenticated scope field.
-        # Until that gateway support exists, deny every call rather than trust
-        # client-provided scopes or permit writes accidentally.
-        result = {"content": [{"type": "text", "text": json.dumps({"error": "gateway_scope_enforcement_required"})}], "isError": True}
+        params = request.get("params")
+        if type(params) is not dict or type(params.get("name")) is not str:
+            raise ValueError("invalid_arguments")
+        try:
+            data = execute(params["name"], params.get("arguments", {}))
+            result = {"content": [{"type": "text", "text": json.dumps(data)}], "isError": bool(data.get("error"))}
+        except (ValueError, subprocess.TimeoutExpired, OSError) as exc:
+            result = {"content": [{"type": "text", "text": json.dumps({"error": "invalid_arguments" if type(exc) is ValueError else "provider_unavailable"})}], "isError": True}
     else:
         raise ValueError("method_not_found")
     return {"jsonrpc": "2.0", "id": request["id"], "result": result}
