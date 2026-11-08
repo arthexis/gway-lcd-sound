@@ -24,7 +24,7 @@ def test_show_status_clear(tmp_path):
 
 
 def test_rejects_invalid_lines_and_ttl(tmp_path):
-    assert call(tmp_path, "show", "bad\\nline").returncode != 0
+    assert call(tmp_path, "show", "bad\nline").returncode != 0
     assert call(tmp_path, "show", "x", "--seconds", "301").returncode != 0
     assert call(tmp_path, "show", "x" * 161).returncode != 0
 
