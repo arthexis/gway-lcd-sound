@@ -1,4 +1,4 @@
-"""User-level sound migration is opt-in and reversible; never touches system command."""
+"""User-level sound adoption is opt-in and fail-forward; system command untouched."""
 import os
 from pathlib import Path
 import subprocess
@@ -38,16 +38,19 @@ def test_adopt_verify_idempotent(tmp_path):
 
 def test_refuses_unexpected_owner(tmp_path):
     run, link, original, target, home = fixture(tmp_path)
+    other = tmp_path / "unmanaged-sound"
+    other.write_text("#!/bin/sh\necho other\n")
+    other.chmod(0o755)
     link.unlink()
-    link.symlink_to(target)
+    link.symlink_to(other)
     assert run("adopt").returncode != 0
-    link.unlink()
-    link.symlink_to(original)
-    assert run("adopt").returncode == 0
+    assert link.resolve() == other
     link.unlink()
     link.symlink_to(original)
     assert run("adopt").returncode == 0
     assert link.resolve() == target
+    assert run("adopt").returncode == 0
+    assert run("verify").returncode == 0
 
 def test_refuses_missing_release(tmp_path):
     run, link, original, target, home = fixture(tmp_path)
