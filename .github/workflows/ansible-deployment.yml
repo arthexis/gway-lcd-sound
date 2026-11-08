@@ -23,6 +23,10 @@ jobs:
         env:
           ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles
         run: ansible-playbook ansible/playbooks/install.yml -i localhost, -c local --syntax-check
+      - name: Validate opt-in MCP playbooks syntax without execution
+        run: |
+          ansible-playbook ansible/playbooks/stage-mcp-release.yml -i localhost, -c local --syntax-check
+          ansible-playbook ansible/playbooks/publish-mcp.yml -i localhost, -c local --syntax-check
       - name: Deploy LCD Sound in isolated HOME
         env:
           HOME: ${{ runner.temp }}/lcd-sound-home
