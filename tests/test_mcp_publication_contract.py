@@ -60,3 +60,14 @@ def test_staging_playbook_is_opt_in_and_full_sha():
     assert "^[a-f0-9]{40}$" in source
     assert "ansible_user_uid | int != 0" in source
     assert "stage-mcp-release.yml" not in (ROOT / "deploy.sh").read_text()
+
+def test_fault_injection_is_exercised_by_ci_without_production_paths():
+    playbook = PLAYBOOK.read_text()
+    ci = (ROOT / ".github/workflows/ansible-deployment.yml").read_text()
+    assert "lcd_sound_test_inject_verify_failure" in playbook
+    assert "lcd_sound_test_inject_verify_failure=true" in ci
+    assert "mcp-registry-test" in ci
+    assert "previous-manifest.json" in ci
+    assert "published-manifest.json" in ci
+    assert "cmp " in ci
+    assert "sudo -n ansible-playbook" in ci
