@@ -166,7 +166,7 @@ case "$action" in
         mkdir -p "$staging/scripts/deploy/systemd/user"
         cp "$source_dir/scripts/deploy/systemd/user/$observer_unit" "$staging/scripts/deploy/systemd/user/$observer_unit"
       fi
-      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed" "$staging/scripts/gway/gway-lcd-sound"
+      chmod 0755 "$staging/scripts/gway/lcd-actions-runner-status" "$staging/scripts/gway/gway_app_observer.py" "$staging/scripts/gway/github-actions-sound-hook" "$staging/scripts/gway/github-actions-job-started" "$staging/scripts/gway/github-actions-job-completed" "$staging/scripts/gway/gway-lcd-sound" "$staging/scripts/gway/sound.sh" "$staging/scripts/gway/gway-toggle-gpio-sound-mute"
       PYTHONDONTWRITEBYTECODE=1 python3 - "$staging/scripts/gway" <<'PY'
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))

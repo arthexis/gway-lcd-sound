@@ -3,9 +3,9 @@ set -euo pipefail
 
 runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 mute_file="${NODE_SOUND_GPIO_MUTE_FILE:-${GWAY_SOUND_GPIO_MUTE_FILE:-$runtime_dir/gway-sound/gpio-muted}}"
-state_dir="/home/arthe/.local/state/gway-sound-mute"
+state_dir="${GWAY_SOUND_MUTE_AUDIT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/gway-sound-mute}"
 log_file="$state_dir/events.ndjson"
-lcd_dir="/home/arthe/.local/state/lcd-lockfiles"
+lcd_dir="${GWAY_LCD_LOCKFILE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/lcd-lockfiles}"
 lcd_event_id=11
 card_id="${RFID_MODE_CARD_ID:-${RFID_CARD_ID:-}}"
 
@@ -14,13 +14,10 @@ usage() {
 }
 
 case "${1:-}" in
-  "") ;;
+  ""|mute|unmute|toggle) ;;
   --status)
-    if [[ -e "$mute_file" ]]; then
-      printf 'muted\n'
-    else
-      printf 'unmuted\n'
-    fi
+    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -m sound_engine.mute status
     exit 0
     ;;
   --help|-h)
@@ -74,20 +71,14 @@ quiet_gpio_pin() {
 mkdir -p "$(dirname "$mute_file")" "$state_dir"
 chmod 700 "$(dirname "$mute_file")" "$state_dir" 2>/dev/null || true
 
-if [[ -e "$mute_file" ]]; then
-  rm -f "$mute_file"
-  state="unmuted"
-  lcd_event "GPIO SOUND" "UNMUTED"
-else
-  {
-    printf 'muted_at=%s\n' "$(timestamp)"
-    printf 'card_id=%s\n' "$card_id"
-    printf 'pid=%s\n' "$$"
-  } >"$mute_file"
-  chmod 600 "$mute_file" 2>/dev/null || true
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+action="${1:-toggle}"
+state="$(PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -m sound_engine.mute "$action")"
+if [[ "$state" == "muted" ]]; then
   quiet_gpio_pin
-  state="muted"
   lcd_event "GPIO SOUND" "MUTED"
+else
+  lcd_event "GPIO SOUND" "UNMUTED"
 fi
 
 printf '{"timestamp":"%s","event":"toggle_gpio_sound_mute","state":"%s","mute_file":"%s","card_id":"%s"}\n' \

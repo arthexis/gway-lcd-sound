@@ -7,10 +7,24 @@ cleanup_gpio() {
   fi
 }
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}"
+if [[ "${1:-}" == "status" ]]; then
+  exec python3 -m sound_engine.mute "$@"
+fi
 trap cleanup_gpio EXIT
 
+if [[ "${1:-}" == "mute" || "${1:-}" == "unmute" || "${1:-}" == "toggle" ]]; then
+  if [[ "${2:-}" == "--json" ]]; then
+    bash "$script_dir/gway-toggle-gpio-sound-mute" "$1" >/dev/null
+    exec python3 -m sound_engine.mute status --json
+  fi
+  [[ $# == 1 ]] || { echo "sound: unexpected arguments" >&2; exit 2; }
+  exec bash "$script_dir/gway-toggle-gpio-sound-mute" "$1"
+fi
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
+from sound_engine import mute as sound_mute
 import json
 import sqlite3
 import fcntl
@@ -165,10 +179,7 @@ def gpio_muted():
 
 
 def playback_muted():
-    return gpio_muted() or os.path.exists(os.path.join(
-        os.environ.get("CODEX_SOUND_HOOK_STATE_DIR",
-                       "/home/arthe/.local/state/codex-sound-hooks"), "silent"))
-
+    return sound_mute.status()["muted"]
 
 def repeat_playback(callback, args):
     for iteration in range(args.repeat):
@@ -711,6 +722,8 @@ def build_parser():
 
 
 def main(argv):
+    if argv and argv[0] in ("status", "mute", "unmute", "toggle"):
+        return sound_mute.main(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
     args.volume = clamp(args.volume, 0.0, 1.0)

@@ -63,11 +63,14 @@ class RepeatAndMuteTests(unittest.TestCase):
         log = (Path(self.temp.name) / "backend.log").read_text()
         self.assertIn("skipped=muted", log)
 
-    def test_legacy_silent_mutes_direct_audio(self):
+    def test_legacy_silent_does_not_survive_as_effective_mute(self):
         (self.hook / "silent").touch()
-        result = self.invoke("ok", "--backend", "audio", "--repeat", "2")
+        result = self.invoke("status", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("skipped=muted", (Path(self.temp.name) / "backend.log").read_text())
+        import json
+        data = json.loads(result.stdout)
+        self.assertTrue(data["legacy_codex_muted"])
+        self.assertFalse(data["muted"])
 
     def test_muted_event_does_not_play_motif(self):
         self.mute.touch()
