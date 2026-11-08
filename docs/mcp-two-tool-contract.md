@@ -24,3 +24,9 @@ Two separate Ansible playbooks exist; neither is included in the default install
 The existing default installer uses short SHA releases and is deliberately unchanged. The historical `sound` symlinks are not touched. **Neither playbook has been run against a node.** Execute-only authorization is enforced by the existing authenticated federation before dispatch, not by client-provided MCP parameters.
 
 Offline tests exercise release idempotence, modified-release rejection, SHA mismatch, staging failure, runtime dependencies and manifest publication contract. Full live authorization negative tests and current-head CI are required before deployment or merge.
+
+## Security audit and CI fault injection
+
+The existing GWay Remote gateway computes `required_scope(tool)` from `readOnlyHint`: both tools are classified `execute`, and `route_provider_call` rejects `authorized_scope='read'` before invoking the node transport. For an authorized call, the gateway supplies `trusted_scope='execute'` to the authenticated transport; the client cannot override it via MCP arguments. This matches the existing federation authorization regression tests in `arthexis/gway-remote`. It is a **code-level audit**, not a live negative OAuth test.
+
+The Ansible CI now tests both playbook syntax, isolated full-SHA release staging twice, and an isolated root-owned manifest publication: injected post-write verification failure must restore the original manifest; normal publication twice must converge. The temporary registry is under the GitHub runner temp directory, not `/etc/gway-mcp-providers`. This CI test does not deploy to gway-001 or Watchtower.
