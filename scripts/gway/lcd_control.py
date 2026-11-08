@@ -26,7 +26,7 @@ def main(argv=None):
         if not 1 <= args.seconds <= 300:
             parser.error("--seconds must be between 1 and 300")
         lines = [args.line1, args.line2]
-        if any(len(s) > 160 or "\\n" in s or "\\r" in s or any(ord(c) < 32 for c in s) for s in lines):
+        if any(len(s) > 160 or "\n" in s or "\r" in s or any(ord(c) < 32 for c in s) for s in lines):
             parser.error("LCD lines must be printable and at most 160 characters")
         root.mkdir(parents=True, exist_ok=True)
         if root.is_symlink() or path.is_symlink():
@@ -35,7 +35,7 @@ def main(argv=None):
         tmp = root / f".lcd-high-9000.{os.getpid()}.tmp"
         try:
             with tmp.open("x", encoding="utf-8") as out:
-                out.write(f"{lines[0]}\\n{lines[1]}\\n{expires}\\n")
+                out.write(f"{lines[0]}\n{lines[1]}\n{expires}\n")
             os.replace(tmp, path)
         finally:
             tmp.unlink(missing_ok=True)
