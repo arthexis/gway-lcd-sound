@@ -1,0 +1,29 @@
+---
+# Explicit opt-in as non-root owner, before root-owned manifest publication.
+- name: Stage and validate full-SHA LCD Sound MCP release
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    lcd_sound_source: "{{ playbook_dir }}/../.."
+    lcd_sound_release_root: "{{ ansible_env.HOME }}/.local/share/gway-lcd-sound/mcp-releases"
+  tasks:
+    - name: Require non-root owner and full revision
+      ansible.builtin.assert:
+        that:
+          - ansible_user_uid | int != 0
+          - lcd_sound_revision is defined
+          - lcd_sound_revision is match('^[a-f0-9]{40}$')
+    - name: Stage and promote only fully validated SHA release
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ lcd_sound_source }}/scripts/deploy/install-mcp-release.py"
+          - --source
+          - "{{ lcd_sound_source }}"
+          - --releases
+          - "{{ lcd_sound_release_root }}"
+          - --revision
+          - "{{ lcd_sound_revision }}"
+      register: lcd_sound_release_result
+      changed_when: lcd_sound_release_result.stdout | trim == 'installed'
