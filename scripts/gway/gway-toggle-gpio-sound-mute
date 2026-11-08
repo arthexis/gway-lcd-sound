@@ -14,7 +14,7 @@ usage() {
 }
 
 case "${1:-}" in
-  "") ;;
+  ""|mute|unmute|toggle) ;;
   --status)
     script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -m sound_engine.mute status
@@ -72,7 +72,8 @@ mkdir -p "$(dirname "$mute_file")" "$state_dir"
 chmod 700 "$(dirname "$mute_file")" "$state_dir" 2>/dev/null || true
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-state="$(PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -m sound_engine.mute toggle)"
+action="${1:-toggle}"
+state="$(PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -m sound_engine.mute "$action")"
 if [[ "$state" == "muted" ]]; then
   quiet_gpio_pin
   lcd_event "GPIO SOUND" "MUTED"
