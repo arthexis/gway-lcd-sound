@@ -54,6 +54,10 @@ def test_failure_before_promotion_keeps_previous_release(tmp_path, monkeypatch):
     releases = tmp_path / "releases"
     assert installer.install(source, releases, revision)
     prior = sorted(p.name for p in releases.iterdir())
+    (source / installer.REQUIRED[0]).write_text("updated release")
+    subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "second"], check=True)
+    revision2 = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     original = installer.check
     def fail_on_staging(root):
         if root.name.startswith(".staging."):
@@ -61,5 +65,5 @@ def test_failure_before_promotion_keeps_previous_release(tmp_path, monkeypatch):
         return original(root)
     monkeypatch.setattr(installer, "check", fail_on_staging)
     with pytest.raises(RuntimeError, match="injected_validation_failure"):
-        installer.install(source, releases, revision)
+        installer.install(source, releases, revision2)
     assert sorted(p.name for p in releases.iterdir()) == prior
