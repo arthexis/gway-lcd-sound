@@ -12,3 +12,7 @@ The provider validates arguments, rejects unknown keys and actions, invokes the 
 ## Deployment gates
 
 The provider is source-only in this PR: no root-owned manifest is published. Before enabling, verify the installed release executable, root-owned manifest pinned to an immutable SHA, node relay execute-scope checks, gateway routing scope classification, and positive/negative end-to-end tests. Historical `/usr/local/bin/sound` and `~/.local/bin/sound` belong to gway-home-tools and must not be overwritten. Direct `lcd` wrapper is present but not installed.
+
+## Opt-in publication and remaining release prerequisite
+
+`ansible/playbooks/publish-mcp.yml` is deliberately not called by the existing install/deploy flows. It only publishes a manifest when a preinstalled `mcp-releases/<full-40-character-SHA>` release exists. The current general LCD Sound Ansible installer uses a **12-character SHA** in `releases/`, so that installer **does not satisfy** the MCP release prerequisite. A separate full-SHA immutable release staging/promotion flow and rollback/convergence tests are still required before deployment. Do not point the manifest at `current` or a short-SHA release.
