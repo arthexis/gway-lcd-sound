@@ -92,6 +92,11 @@
           ansible.builtin.slurp:
             src: "{{ lcd_sound_manifest_path }}"
           register: published_manifest
+        - name: Inject offline publication verification failure when explicitly requested
+          ansible.builtin.assert:
+            that:
+              - not (lcd_sound_test_inject_verify_failure | default(false) | bool)
+            fail_msg: Offline manifest verification fault injection
         - name: Verify exact pinned manifest revision and executable
           ansible.builtin.assert:
             that:
