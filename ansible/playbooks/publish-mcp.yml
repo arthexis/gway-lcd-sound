@@ -41,6 +41,16 @@
           - item.stat.isreg | default(false)
           - not (item.stat.islnk | default(false))
       loop: "{{ files.results }}"
+    - name: Inspect existing provider registry without following symlinks
+      ansible.builtin.stat:
+        path: "{{ lcd_sound_manifest_dir }}"
+        follow: false
+      register: registry
+    - name: Reject symlinked or non-directory registry
+      ansible.builtin.assert:
+        that:
+          - not (registry.stat.islnk | default(false))
+          - not (registry.stat.exists | default(false)) or (registry.stat.isdir | default(false))
     - name: Ensure root-owned provider registry exists
       ansible.builtin.file:
         path: "{{ lcd_sound_manifest_dir }}"
