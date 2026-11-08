@@ -27,6 +27,16 @@ jobs:
         run: |
           ansible-playbook ansible/playbooks/stage-mcp-release.yml -i localhost, -c local --syntax-check
           ansible-playbook ansible/playbooks/publish-mcp.yml -i localhost, -c local --syntax-check
+      - name: Exercise opt-in MCP staging in isolated HOME only
+        env:
+          HOME: ${{ runner.temp }}/lcd-sound-mcp-home
+        run: |
+          mkdir -p "$HOME"
+          revision=$(git rev-parse HEAD)
+          ansible-playbook ansible/playbooks/stage-mcp-release.yml -i localhost, -c local -e "lcd_sound_revision=$revision"
+          ansible-playbook ansible/playbooks/stage-mcp-release.yml -i localhost, -c local -e "lcd_sound_revision=$revision"
+          test -x "$HOME/.local/share/gway-lcd-sound/mcp-releases/$revision/scripts/gway/lcd-sound-mcp"
+          test -z "$(find "$HOME/.local/share/gway-lcd-sound/mcp-releases" -maxdepth 1 -name '.staging.*' -print -quit)"
       - name: Deploy LCD Sound in isolated HOME
         env:
           HOME: ${{ runner.temp }}/lcd-sound-home
