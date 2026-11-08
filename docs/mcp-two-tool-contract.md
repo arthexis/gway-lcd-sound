@@ -1,26 +1,14 @@
-# Federated MCP contract — LCD/Sound (A2)
+# MCP federation contract: two execute-only tools
 
-Node owns the catalog; Watchtower forwards without maintaining a second allowlist. Exactly two public tools: `lcd` and `sound` (provider prefix may be applied by the existing federation transport).
+The node exposes exactly two MCP tools, `lcd` and `sound`. Both declare `annotations.readOnlyHint: false`. The existing gway-remote gateway classifies each entire tool as execute-required and enforces authenticated `gway:execute` before forwarding through the authenticated node transport. All actions, including `status`, require execute permission. No action-specific scope extension or change to gway-remote is required.
 
-| Tool | action | Scope | Parameters |
-|---|---|---|---|
-| lcd | status | gway:remote | none |
-| lcd | show | gway:execute | line1 (1..160 printable), line2 (0..160), seconds (1..300) |
-| lcd | clear | gway:execute | none |
-| sound | status | gway:remote | json=true |
-| sound | play | gway:execute | name (enumerated sound cue, not shell) |
-| sound | mute / unmute / toggle | gway:execute | none |
+## Actions
 
-Strictly reject unknown actions, extra parameters, control characters, arbitrary shell strings and unapproved paths. Dispatch only to the release-owned executables with argument arrays (never shell interpolation). Errors must retain exit status and structured output; read-only operations must have no sound or LCD side effects. Tests must exercise unauthorized writes, unknown operations, read/write parity and catalog count (two tools, not a fixed count of all federated tools).
+- `lcd`: `status`, `show(line1, line2?, seconds?)`, `clear`. Overlay is bounded to 1–300 seconds and uses only its owned lockfile.
+- `sound`: `status`, `play(name)`, `mute`, `unmute`, `toggle`. Named cues are an enumerated allowlist.
 
-The historical `/usr/local/bin/sound` and `~/.local/bin/sound` ownership remains unchanged until a separately approved migration. Direct CLI `lcd` may be installed only after a collision audit. No provider manifest is published by A1, and no production node is changed.
+The provider validates arguments, rejects unknown keys and actions, invokes the release-owned CLI via argument arrays (no shell interpolation), and does not trust scopes supplied by MCP arguments. **Security boundary:** the stdio provider is only safe when launched by the existing trusted node-owned MCP relay; it must not be exposed directly to unauthenticated clients. The relay and gateway enforce authorization before the provider receives a call. Do not advertise this provider outside the authenticated federation.
 
-## Current fail-closed implementation
+## Deployment gates
 
-`lcd_sound_mcp.py` advertises exactly two tools and validates command arrays. Because each tool mixes read and write actions, tool-level `readOnlyHint` cannot express per-action OAuth requirements. The provider deliberately rejects every `tools/call` over stdio until an authenticated, trusted action-scope envelope or gateway action-policy integration exists. The `execute()` function enforces scopes for trusted internal calls and is tested offline; it is not reachable through stdio. Do not register or deploy this provider yet. The `lcd` direct wrapper exists in source but is not installed as a link. Historical `sound` remains externally owned.
-
-## Verified gateway contract (2026-11-08)
-
-`arthexis/gway-remote/gway_remote/mcp_tool_scope.py` classifies an **entire tool** as read only when `annotations.readOnlyHint=true`; otherwise execute. `mcp_federated_catalog.catalog_from_nodes` stores one required scope per tool, and `route_provider_call` checks that scope before forwarding. Therefore no existing gateway API can safely enforce `status` as read and `show/play` as execute *inside the same tool*.
-
-**Integration prerequisite:** introduce an audited, node-declared per-action scope policy in gway-remote (or a trusted gateway-side classifier bound to provider revision). Validate action against the provider schema **before** dispatch; do not accept scope claims in client arguments. Pass only the gateway-authenticated scope over the existing trusted transport, and enforce the action-specific scope again on the node. Until then this prototype intentionally denies stdio tools/call and must not be registered. A tool-level execute-only policy would be secure but would make `status` unavailable to read-only users, violating the agreed contract.
+The provider is source-only in this PR: no root-owned manifest is published. Before enabling, verify the installed release executable, root-owned manifest pinned to an immutable SHA, node relay execute-scope checks, gateway routing scope classification, and positive/negative end-to-end tests. Historical `/usr/local/bin/sound` and `~/.local/bin/sound` belong to gway-home-tools and must not be overwritten. Direct `lcd` wrapper is present but not installed.
