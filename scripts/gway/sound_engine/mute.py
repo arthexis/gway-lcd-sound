@@ -1,7 +1,4 @@
-"""Persistent mute state shared by sound playback and CLI.
-
-The legacy runtime and Codex markers remain effective for compatibility.
-"""
+"""Volatile mute state shared by sound playback and CLI; reboot clears it."""
 import argparse
 import fcntl
 import json
@@ -9,8 +6,7 @@ import os
 from pathlib import Path
 
 def state_path():
-    return Path(os.environ.get("GWAY_SOUND_MUTE_STATE_FILE") or
-                (Path(os.environ.get("XDG_STATE_HOME", str(Path.home()/".local/state"))) / "gway-sound" / "muted"))
+    return legacy_paths()[0]
 
 def legacy_paths():
     runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
@@ -20,11 +16,10 @@ def legacy_paths():
     )
 
 def status():
-    persistent = state_path().exists()
-    legacy_gpio, legacy_codex = (p.exists() for p in legacy_paths())
-    return {"muted": persistent or legacy_gpio or legacy_codex,
-            "persistent_muted": persistent,
-            "legacy_gpio_muted": legacy_gpio,
+    runtime_muted = state_path().exists()
+    legacy_codex = legacy_paths()[1].exists()
+    return {"muted": runtime_muted or legacy_codex,
+            "runtime_muted": runtime_muted,
             "legacy_codex_muted": legacy_codex}
 
 def change(action):
@@ -45,7 +40,7 @@ def change(action):
             os.chmod(path, 0o600)
         else:
             path.unlink(missing_ok=True)
-            # Clear both historical markers to make unmute effective.
+            # Clear historical markers to make unmute effective.
             for legacy in legacy_paths():
                 if legacy.is_symlink():
                     raise OSError("unsafe legacy mute marker")
