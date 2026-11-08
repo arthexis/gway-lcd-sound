@@ -19,7 +19,7 @@ def test_status_read_only(tmp_path):
     assert json.loads(result.stdout)["muted"] is False
     assert not (tmp_path/"runtime").exists()
 
-def test_persistent_idempotent_and_toggle(tmp_path):
+def test_volatile_idempotent_and_toggle(tmp_path):
     assert run(tmp_path, "mute").stdout.strip() == "muted"
     assert run(tmp_path, "mute").stdout.strip() == "muted"
     assert (tmp_path/"runtime"/"gpio-muted").exists()
@@ -31,7 +31,9 @@ def test_legacy_markers(tmp_path):
     marker = tmp_path/"codex"/"silent"
     marker.parent.mkdir()
     marker.touch()
-    assert json.loads(run(tmp_path, "status", "--json").stdout)["legacy_codex_muted"]
+    data = json.loads(run(tmp_path, "status", "--json").stdout)
+    assert data["legacy_codex_muted"]
+    assert not data["muted"]  # old persistent Codex marker must never survive as effective mute
     assert run(tmp_path, "unmute").stdout.strip() == "unmuted"
     assert not marker.exists()
 
@@ -41,4 +43,11 @@ def test_invalid_action(tmp_path):
 def test_runtime_state_disappears_on_simulated_reboot(tmp_path):
     assert run(tmp_path, "mute").stdout.strip() == "muted"
     (tmp_path/"runtime"/"gpio-muted").unlink()
+    assert run(tmp_path, "status").stdout.strip() == "unmuted"
+
+def test_concurrent_toggle(tmp_path):
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: run(tmp_path, "toggle"), range(8)))
+    assert all(result.returncode == 0 for result in results)
     assert run(tmp_path, "status").stdout.strip() == "unmuted"
