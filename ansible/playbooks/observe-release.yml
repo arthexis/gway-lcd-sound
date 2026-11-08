@@ -1,0 +1,44 @@
+---
+# Read-only evidence for Ansible-direct and GWay Remote consumers.
+# No install role, release activation, service restart or state mutation.
+- name: Observe installed LCD Sound release
+  hosts: all
+  gather_facts: false
+  vars:
+    sound_prefix: "{{ lookup('env', 'HOME') }}/.local/share/gway-lcd-sound"
+    sound_bin: "{{ lookup('env', 'HOME') }}/.local/bin"
+  tasks:
+    - name: Inspect active release link
+      ansible.builtin.stat:
+        path: "{{ sound_prefix }}/current"
+        follow: false
+      register: sound_current
+      changed_when: false
+
+    - name: Inspect public command
+      ansible.builtin.stat:
+        path: "{{ sound_bin }}/gway-app-observer"
+        follow: false
+      register: sound_command
+      changed_when: false
+
+    - name: Verify public command interface when present
+      ansible.builtin.command:
+        argv: ["{{ sound_bin }}/gway-app-observer", "--help"]
+      register: sound_probe
+      changed_when: false
+      failed_when: false
+      when: sound_command.stat.islnk | default(false)
+
+    - name: Publish read-only observation
+      ansible.builtin.debug:
+        msg:
+          schema_version: 1
+          component: gway-lcd-sound
+          recovery_strategy: fail_forward
+          activated_release: "{{ sound_current.stat.lnk_source | default(none) if sound_current.stat.islnk | default(false) else none }}"
+          runtime_state: "{{ 'healthy' if (sound_current.stat.islnk | default(false)) and (sound_command.stat.islnk | default(false)) and (sound_probe.rc | default(1)) == 0 else 'unknown' }}"
+          evidence:
+            - active_release_symlink
+            - public_command_help
+          read_only: true
