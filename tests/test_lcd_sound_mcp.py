@@ -58,3 +58,23 @@ def test_stdio_dispatches_validated_call():
         assert result["result"]["isError"] is False
         assert run.call_args.args[0][1:4] == ["lcd", "show", "hi"]
 
+
+def test_scope_claims_in_client_arguments_are_rejected():
+    with patch.object(mcp.subprocess, "run") as run:
+        for tool, action in (("lcd", "clear"), ("sound", "mute")):
+            result = mcp.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                                 "params": {"name": tool, "arguments": {"action": action,
+                                                                      "authorized_scopes": ["gway:execute"]}}})
+            assert result["result"]["isError"] is True
+        run.assert_not_called()
+
+
+def test_malformed_action_and_cue_types_fail_closed():
+    with patch.object(mcp.subprocess, "run") as run:
+        for tool, args in (("sound", {"action": "play", "name": []}),
+                           ("sound", {"action": ["status"]}),
+                           ("lcd", {"action": {"show": True}})):
+            result = mcp.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                                 "params": {"name": tool, "arguments": args}})
+            assert result["result"]["isError"] is True
+        run.assert_not_called()
