@@ -80,13 +80,13 @@
       when: existing_manifest.stat.exists | default(false)
     - name: Publish and verify pinned manifest, restoring prior state on failure
       block:
-      - name: Publish pinned manifest atomically and idempotently
-        ansible.builtin.copy:
-          dest: "{{ lcd_sound_manifest_path }}"
-          owner: root
-          group: root
-          mode: '0644'
-          content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp', 'argv': [lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp']} | to_json }}\n"
+        - name: Publish pinned manifest atomically and idempotently
+          ansible.builtin.copy:
+            dest: "{{ lcd_sound_manifest_path }}"
+            owner: root
+            group: root
+            mode: '0644'
+            content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp', 'argv': [lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp']} | to_json }}\n"
   
         - name: Read back published manifest
           ansible.builtin.slurp:
