@@ -743,7 +743,14 @@ def main(argv):
             pattern = tuple(tuple(note) for note in parse_sequence(args.sequence))
         except ValueError as exc:
             parser.error(str(exc))
-        repeat_playback(lambda: play_custom("sequence", pattern, args), args)
+        runtime = os.environ.get("XDG_RUNTIME_DIR") or os.path.join(tempfile.gettempdir(), f"gway-sound-{os.getuid()}")
+        lock_dir = os.path.join(runtime, "gway-sound")
+        os.makedirs(lock_dir, mode=0o700, exist_ok=True)
+        if os.stat(lock_dir).st_uid != os.getuid() or os.stat(lock_dir).st_mode & 0o077:
+            parser.error("unsafe sound lock directory")
+        with open(os.path.join(lock_dir, "one-shot.lock"), "a+b") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            repeat_playback(lambda: play_custom("sequence", pattern, args), args)
         return 0
     if args.pattern_json:
         if args.event or args.motif or args.resolve:
