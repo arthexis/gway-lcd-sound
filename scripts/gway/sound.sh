@@ -748,9 +748,16 @@ def main(argv):
         os.makedirs(lock_dir, mode=0o700, exist_ok=True)
         if os.stat(lock_dir).st_uid != os.getuid() or os.stat(lock_dir).st_mode & 0o077:
             parser.error("unsafe sound lock directory")
-        with open(os.path.join(lock_dir, "one-shot.lock"), "a+b") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_fd = os.open(os.path.join(lock_dir, "one-shot.lock"),
+                          os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            lock_info = os.fstat(lock_fd)
+            if lock_info.st_uid != os.getuid() or lock_info.st_mode & 0o077 or not __import__("stat").S_ISREG(lock_info.st_mode):
+                parser.error("unsafe sound lock file")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
             repeat_playback(lambda: play_custom("sequence", pattern, args), args)
+        finally:
+            os.close(lock_fd)
         return 0
     if args.pattern_json:
         if args.event or args.motif or args.resolve:
