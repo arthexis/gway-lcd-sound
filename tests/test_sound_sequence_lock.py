@@ -36,6 +36,7 @@ def test_exclusive_lock_blocks_other_invocation(tmp_path):
     lock_dir.mkdir(mode=0o700)
     lock = lock_dir / "one-shot.lock"
     with lock.open("w+b") as held:
+        os.chmod(lock, 0o600)
         fcntl.flock(held, fcntl.LOCK_EX)
         env = dict(os.environ, XDG_RUNTIME_DIR=str(tmp_path))
         child = subprocess.Popen(["bash", str(DISPATCHER), "sound", "play", "--sequence", SEQUENCE, "--dry-run"],
