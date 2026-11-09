@@ -32,3 +32,16 @@ def test_existing_named_cue_dry_run(tmp_path):
     result = run(tmp_path, "ok", "--dry-run")
     assert result.returncode == 0, result.stderr
     assert "1047Hz" in result.stdout
+
+def test_muted_sequence_is_silent_and_does_not_write_db(tmp_path):
+    lock_dir = tmp_path / "gway-sound"
+    lock_dir.mkdir(mode=0o700)
+    (lock_dir / "gpio-muted").write_text("muted\\n")
+    env = dict(os.environ, XDG_RUNTIME_DIR=str(tmp_path),
+               GWAY_SOUND_EVENT_DB=str(tmp_path / "unused.sqlite3"),
+               GWAY_SOUND_BACKEND_LOG=str(tmp_path / "backend.log"))
+    result = subprocess.run(["bash", str(DISPATCHER), "sound", "play", "--sequence", SEQUENCE],
+                            capture_output=True, text=True, timeout=10, env=env)
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "unused.sqlite3").exists()
+    assert "skipped=muted" in (tmp_path / "backend.log").read_text()
