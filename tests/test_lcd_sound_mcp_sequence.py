@@ -1,12 +1,12 @@
 """MCP one-shot contract tests without physical audio."""
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1] / "scripts" / "gway"
 spec = importlib.util.spec_from_file_location("lcd_sound_mcp", ROOT / "lcd_sound_mcp.py")
-import sys
 sys.path.insert(0, str(ROOT))
 mcp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mcp)
