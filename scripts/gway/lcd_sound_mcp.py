@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from sound_sequence import parse_sequence, MAX_BYTES
 
 HERE = Path(__file__).resolve().parent
 DISPATCHER = HERE / "gway-lcd-sound"
@@ -21,7 +22,8 @@ TOOLS = (
      "annotations": {"readOnlyHint": False},
      "inputSchema": {"type": "object", "properties": {
          "action": {"type": "string", "enum": sorted(ACTIONS["sound"])},
-         "name": {"type": "string", "enum": sorted(CUES)}},
+         "name": {"type": "string", "enum": sorted(CUES)},
+         "sequence": {"type": "string", "maxLength": MAX_BYTES}},
          "required": ["action"], "additionalProperties": False}},
 )
 
@@ -43,10 +45,17 @@ def command_for(name, args):
             raise ValueError("invalid_arguments")
         command += [line1, line2, "--seconds", str(seconds)]
     elif name == "sound" and action == "play":
-        keys.add("name")
-        if type(args.get("name")) is not str or args["name"] not in CUES:
-            raise ValueError("invalid_arguments")
-        command.append(args["name"])
+        if "sequence" in args:
+            keys.add("sequence")
+            if "name" in args or type(args["sequence"]) is not str:
+                raise ValueError("invalid_arguments")
+            parse_sequence(args["sequence"])
+            command += ["--sequence", args["sequence"]]
+        else:
+            keys.add("name")
+            if type(args.get("name")) is not str or args["name"] not in CUES:
+                raise ValueError("invalid_arguments")
+            command.append(args["name"])
     if set(args) - keys:
         raise ValueError("invalid_arguments")
     return command

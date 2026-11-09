@@ -25,6 +25,7 @@ fi
 python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 from sound_engine import mute as sound_mute
+from sound_sequence import validate as validate_sequence, parse_sequence
 import json
 import sqlite3
 import fcntl
@@ -705,6 +706,7 @@ def build_parser():
         help="sound name, list, all, or test",
     )
     parser.add_argument("--pattern-json", help="Internal: preview a validated JSON pattern without saving")
+    parser.add_argument("--sequence", help="One-shot gway-piano-v1 JSON composition; never persisted")
     parser.add_argument("--motif", help="Explicit motif to play before a sound; bypasses event cooldown")
     parser.add_argument("--list-motifs", action="store_true", help="Print installed motif names as JSON")
     parser.add_argument("--event", help="Producer-owned event name")
@@ -732,19 +734,41 @@ def main(argv):
     if not 1 <= args.repeat <= 20:
         parser.error("--repeat must be between 1 and 20")
     args.backend = (args.backend or "auto").strip().lower()
+    if args.sequence is not None:
+        if args.pattern_json or args.event or args.motif or args.resolve or args.source or args.sound != "list":
+            parser.error("--sequence cannot be combined with other sound selection")
+        if args.repeat != 1:
+            parser.error("--sequence cannot be repeated")
+        try:
+            pattern = tuple(tuple(note) for note in parse_sequence(args.sequence))
+        except ValueError as exc:
+            parser.error(str(exc))
+        runtime = os.environ.get("XDG_RUNTIME_DIR") or os.path.join(tempfile.gettempdir(), f"gway-sound-{os.getuid()}")
+        lock_dir = os.path.join(runtime, "gway-sound")
+        if os.path.islink(lock_dir):
+            parser.error("unsafe sound lock directory")
+        os.makedirs(lock_dir, mode=0o700, exist_ok=True)
+        dir_info = os.lstat(lock_dir)
+        if (not __import__("stat").S_ISDIR(dir_info.st_mode)
+                or dir_info.st_uid != os.getuid() or dir_info.st_mode & 0o077):
+            parser.error("unsafe sound lock directory")
+        lock_fd = os.open(os.path.join(lock_dir, "one-shot.lock"),
+                          os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            lock_info = os.fstat(lock_fd)
+            if lock_info.st_uid != os.getuid() or lock_info.st_mode & 0o077 or not __import__("stat").S_ISREG(lock_info.st_mode):
+                parser.error("unsafe sound lock file")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            repeat_playback(lambda: play_custom("sequence", pattern, args), args)
+        finally:
+            os.close(lock_fd)
+        return 0
     if args.pattern_json:
         if args.event or args.motif or args.resolve:
             parser.error("--pattern-json cannot be combined with event or motif playback")
         try:
             raw = json.loads(args.pattern_json)
-            pattern = tuple((float(a),float(b),float(c)) for a,b,c in raw)
-            if not pattern or len(pattern)>12 or any(
-                not all(math.isfinite(v) for v in note)
-                or (note[0]!=0 and not 80<=note[0]<=4000)
-                or not 0.01<=note[1]<=0.4 or not 0<=note[2]<=0.4
-                for note in pattern
-            ):
-                raise ValueError("invalid preview notes")
+            pattern = tuple(tuple(note) for note in validate_sequence(raw))
             repeat_playback(lambda: play_custom("preview", pattern, args), args)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             parser.error(str(exc))

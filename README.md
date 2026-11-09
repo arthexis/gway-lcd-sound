@@ -246,3 +246,14 @@ pointer, and installed CLI references are preserved. Unknown names, unsafe symli
 lock contention and excessive candidate counts block cleanup. Apply uses the same
 deployment lock and rechecks each candidate before removal. No database, credentials,
 shared dependencies or system services are removed, and deployment never prunes automatically.
+
+## Ephemeral sound sequences (PR #59)
+
+The dispatcher accepts the same versioned pure-data JSON exported by `gway-lcd-sound piano`:
+
+```sh
+gway-lcd-sound sound play --sequence '{"format":"gway-piano-v1","notes":[[440,0.12,0.03],[660,0.12,0]]}'
+sound --sequence '{"format":"gway-piano-v1","notes":[[440,0.12,0.03],[660,0.12,0]]}' --dry-run
+```
+
+The federated `lcd_sound__sound` tool accepts `{"action":"play","sequence":"<versioned JSON string>"}` as an alternative to `name`. Only data is passed as an argv element; no shell is involved. No event mappings, named sounds, or motif context are saved. The piano validation limits apply (1–12 steps, 80–4000 Hz or rest, 10–400 ms duration, 0–400 ms pause), with a 4096-byte input cap. One-shot playback uses a private runtime flock, respects mute, and does not repeat. Existing named cues remain supported.
