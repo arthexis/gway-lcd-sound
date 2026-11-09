@@ -745,8 +745,12 @@ def main(argv):
             parser.error(str(exc))
         runtime = os.environ.get("XDG_RUNTIME_DIR") or os.path.join(tempfile.gettempdir(), f"gway-sound-{os.getuid()}")
         lock_dir = os.path.join(runtime, "gway-sound")
+        if os.path.islink(lock_dir):
+            parser.error("unsafe sound lock directory")
         os.makedirs(lock_dir, mode=0o700, exist_ok=True)
-        if os.stat(lock_dir).st_uid != os.getuid() or os.stat(lock_dir).st_mode & 0o077:
+        dir_info = os.lstat(lock_dir)
+        if (not __import__("stat").S_ISDIR(dir_info.st_mode)
+                or dir_info.st_uid != os.getuid() or dir_info.st_mode & 0o077):
             parser.error("unsafe sound lock directory")
         lock_fd = os.open(os.path.join(lock_dir, "one-shot.lock"),
                           os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0), 0o600)
