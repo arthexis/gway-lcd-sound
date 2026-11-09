@@ -57,7 +57,15 @@ case "$command" in
     shift
     case "$1" in
       status) shift; exec bash "$script_dir/sound.sh" status "$@" ;;
-      play) shift; [[ $# -gt 0 ]] || { usage >&2; exit 64; }; exec bash "$script_dir/sound.sh" "$@" ;;
+      play)
+        shift
+        if [[ "${1:-}" == "--sequence" ]]; then
+          [[ $# -eq 2 ]] || { echo "sound: --sequence requires exactly one JSON payload" >&2; exit 64; }
+          exec bash "$script_dir/sound.sh" --pattern-json "$2"
+        fi
+        [[ $# -gt 0 ]] || { usage >&2; exit 64; }
+        exec bash "$script_dir/sound.sh" "$@" ;;
+
       unmute|toggle) op="$1"; shift; exec bash "$script_dir/sound.sh" "$op" "$@" ;;
       hotplug) shift; exec "$script_dir/gway-event-sound-hotplug" "$@" ;;
       mute)
