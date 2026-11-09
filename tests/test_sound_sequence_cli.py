@@ -16,7 +16,7 @@ def run(tmp_path, *args):
 def test_sequence_dry_run_has_no_database_or_audio(tmp_path):
     result = run(tmp_path, "--sequence", SEQUENCE, "--dry-run")
     assert result.returncode == 0, result.stderr
-    assert "440Hz" in result.stdout
+    assert "440.0Hz" in result.stdout
     assert not (tmp_path / "unused.sqlite3").exists()
 
 def test_sequence_invalid_rejected_without_database(tmp_path):
