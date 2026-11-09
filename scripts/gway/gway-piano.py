@@ -27,22 +27,7 @@ def label(hz):
     midi = round(69 + 12 * math.log2(hz / 440))
     return f"{NAMES[midi % 12]}{midi//12-1}"
 
-def validate(notes):
-    if not 1 <= len(notes) <= MAX_NOTES:
-        raise ValueError("composition requires 1-12 steps")
-    normalized = []
-    for item in notes:
-        if len(item) != 3:
-            raise ValueError("steps need [Hz, seconds, pause_seconds]")
-        hz, duration, pause = (float(v) for v in item)
-        if not all(math.isfinite(v) for v in (hz,duration,pause)):
-            raise ValueError("values must be finite")
-        if not (hz == 0 or 80 <= hz <= 4000):
-            raise ValueError("frequency must be 0 (rest) or 80-4000 Hz")
-        if not (0.01 <= duration <= 0.4 and 0 <= pause <= 0.4):
-            raise ValueError("duration must be 10-400 ms, pause 0-400 ms")
-        normalized.append([hz, duration, pause])
-    return normalized
+from sound_sequence import validate
 
 def db_open(path):
     path = Path(path).expanduser()
