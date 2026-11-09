@@ -4,7 +4,7 @@ import pytest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "gway"))
-from sound_sequence import parse_sequence, validate
+from sound_sequence import parse_sequence, validate  # noqa: E402
 
 def test_piano_format_roundtrip():
     notes = [[440, .12, .03], [0, .05, 0], [880, .2, 0]]
