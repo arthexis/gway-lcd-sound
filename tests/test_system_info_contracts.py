@@ -19,7 +19,7 @@ def sample(**overrides):
 
 def test_normal_frames_preserve_order_and_format():
     frames = formatting.build_frames(sample())
-    assert [f.key for f in frames] == ["host", "net", "wifi", "health", "disk", "devices"]
+    assert [f.key for f in frames] == ["host", "net", "wifi", "health", "disk"]
     assert frames[0].line1 == "HOST gway-001"
     assert frames[1].line1 == "NET eth0 ok"
     assert frames[3].line1 == "SOC54C RTC31C"
@@ -30,7 +30,7 @@ def test_conditional_frames_preserve_existing_order():
     frames = formatting.build_frames(sample(throttle="thr 0x1", failed_count=2,
                                             err_count=3, warn_count=4))
     assert [f.key for f in frames] == [
-        "host", "net", "wifi", "health", "disk", "power", "services", "devices", "logs"
+        "host", "net", "wifi", "health", "disk", "power", "services", "logs"
     ]
 
 
