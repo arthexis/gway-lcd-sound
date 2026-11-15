@@ -112,14 +112,15 @@ def wifi_summary() -> tuple[str, str]:
     if not interfaces:
         return "WIFI none", "no wlan ifaces"
 
-    ap_parts: list[str] = []
+    ap_parts: list[tuple[str, str]] = []
     link_parts: list[tuple[str, str, str]] = []
     for iface in interfaces:
         info = run(["iw", "dev", iface, "info"], timeout=1.0)
         if "type AP" in info:
             stations = run(["iw", "dev", iface, "station", "dump"], timeout=1.0)
             clients = len(re.findall(r"^Station\s+", stations, flags=re.MULTILINE))
-            ap_parts.append(f"{iface} AP{clients}")
+            ssid_match = re.search(r"^\s*ssid\s+(.+)$", info, flags=re.MULTILINE)
+            ap_parts.append((f"{iface} AP{clients}", ssid_match.group(1) if ssid_match else "SSID unavailable"))
             continue
         link = run(["iw", "dev", iface, "link"], timeout=1.0)
         ssid_match = re.search(r"^\s*SSID:\s+(.+)$", link, flags=re.MULTILINE)
@@ -129,9 +130,9 @@ def wifi_summary() -> tuple[str, str]:
             link_parts.append((iface, signal, ssid_match.group(1)))
 
     if ap_parts and link_parts:
-        return compact(f"WIFI {ap_parts[0]}"), compact(link_parts[0][2])
+        return compact(f"WIFI {ap_parts[0][0]}"), compact(link_parts[0][2])
     if ap_parts:
-        return compact(f"WIFI {ap_parts[0]}"), compact(" ".join(interfaces))
+        return compact(f"WIFI {ap_parts[0][0]}"), compact(ap_parts[0][1])
     if link_parts:
         iface, signal, ssid = link_parts[0]
         return compact(f"WIFI {iface} {signal}"), compact(ssid)
