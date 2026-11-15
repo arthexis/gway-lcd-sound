@@ -84,6 +84,37 @@ def systemctl_active(unit: str, *, user: bool = False) -> bool:
     return run(command, timeout=1.5).strip() == "active"
 
 
+def deployment_summary() -> tuple[str, str] | None:
+    executable = shutil.which("gway-remote")
+    if not executable:
+        return None
+    try:
+        result = subprocess.run([executable, "status", "--json"], capture_output=True,
+                                text=True, check=True, timeout=20)
+        report = json.loads(result.stdout)
+        if report.get("schema") != "gway-remote/status/v1":
+            raise ValueError("unexpected status schema")
+        components = report["components"]
+        if not isinstance(components, list) or not components:
+            raise ValueError("missing components")
+        installation = {key: 0 for key in ("activated", "staged", "unavailable", "unknown")}
+        runtime = {key: 0 for key in ("healthy", "unhealthy", "not_applicable", "unknown")}
+        for component in components:
+            evidence = component.get("deployment_evidence")
+            if not isinstance(evidence, dict) or evidence.get("schema_version") != 1:
+                evidence = {}
+            state = evidence.get("installation_state")
+            installation[state if state in installation else "unknown"] += 1
+            state = evidence.get("runtime_state")
+            runtime[state if state in runtime else "unknown"] += 1
+        if len(components) > 9:
+            raise ValueError("too many components for display")
+        return (f"DEP A{installation['activated']} S{installation['staged']} U{installation['unavailable']} ?{installation['unknown']}",
+                f"H{runtime['healthy']} B{runtime['unhealthy']} N{runtime['not_applicable']} ?{runtime['unknown']}")
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError, KeyError):
+        return "DEP unavailable", "status unknown"
+
+
 def primary_route() -> tuple[str, str, bool]:
     output = run(["ip", "route", "get", "1.1.1.1"], timeout=1.5)
     iface_match = re.search(r"\bdev\s+(\S+)", output)
@@ -343,11 +374,9 @@ def collect_snapshot() -> Snapshot:
         root_pct=root_pct, root_free=root_free, home_pct=home_pct, home_free=home_free,
         err_count=err_count, warn_count=warn_count, last_log=last_log,
         addrs=i2c_addresses(), camera_count=len(list(Path("/dev").glob("video*"))),
-        failed_count=failed_systemd_count(), throttle=throttle_label(),
-        services_ok=all((systemctl_active("ssh.service"),
-                         systemctl_active("NetworkManager.service"),
-                         systemctl_active("lcd-lockfile.service", user=True))),
+        throttle=throttle_label(),
         wifi_line1=wifi_line1, wifi_line2=wifi_line2,
         uptime=uptime_seconds(), cpu_temp=cpu_temp_c(), rtc_temp=rtc_temp_c(), usb_count=usb_count(),
-        rfid=rfid_state(), cpu_freq=cpu_freq_label(), process_count=process_count(),
+        rfid=rfid_state(), cpu_freq=cpu_freq_label(),
+        deployment_lines=deployment_summary(),
     )

@@ -262,3 +262,11 @@ The LCD health frame displays `SOC` temperature and the optional `RTC`
 DS3231 temperature at I2C bus 1 address 0x68, rounded to whole degrees C.
 The RTC reading is local to the clock module and can differ from room air.
 Missing readings appear as `?C`; load and RAM remain on the second line.
+
+When `gway-remote` is available, the LCD deployment frame summarizes its
+local status evidence. `DEP A` counts activated releases, `S` staged, `U`
+authoritatively unavailable, and `?` unknown. The second line counts runtime
+states: `H` healthy, `B` unhealthy, `N` not applicable, and `?` unknown.
+These are separate observations; activation does not prove runtime health.
+If the tool fails or times out the frame says `DEP unavailable`; if the tool
+is not installed, the frame is omitted. For details use `gway-remote status`.
