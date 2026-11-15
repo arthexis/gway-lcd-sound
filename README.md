@@ -257,3 +257,8 @@ sound --sequence '{"format":"gway-piano-v1","notes":[[440,0.12,0.03],[660,0.12,0
 ```
 
 The federated `lcd_sound__sound` tool accepts `{"action":"play","sequence":"<versioned JSON string>"}` as an alternative to `name`. Only data is passed as an argv element; no shell is involved. No event mappings, named sounds, or motif context are saved. The piano validation limits apply (1–12 steps, 80–4000 Hz or rest, 10–400 ms duration, 0–400 ms pause), with a 4096-byte input cap. One-shot playback uses a private runtime flock, respects mute, and does not repeat. Existing named cues remain supported.
+
+The LCD health frame displays `SOC` temperature and the optional `RTC`
+DS3231 temperature at I2C bus 1 address 0x68, rounded to whole degrees C.
+The RTC reading is local to the clock module and can differ from room air.
+Missing readings appear as `?C`; load and RAM remain on the second line.
