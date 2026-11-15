@@ -150,6 +150,20 @@ def cpu_temp_c() -> str:
     return "?C"
 
 
+def rtc_temp_c(root: Path = Path("/sys/bus/i2c/devices/1-0068/hwmon")) -> str:
+    """Read the optional DS3231 package temperature without probing the bus."""
+    for path in sorted(root.glob("hwmon*/temp1_input"))[:8]:
+        try:
+            if (path.parent / "name").read_text(encoding="ascii").strip() != "ds3231":
+                continue
+            value = int(path.read_text(encoding="ascii").strip())
+        except (OSError, ValueError, UnicodeError):
+            continue
+        if -55000 <= value <= 125000:
+            return f"{round(value / 1000)}C"
+    return "?C"
+
+
 def memory_percent() -> int | None:
     data: dict[str, int] = {}
     try:
@@ -333,6 +347,6 @@ def collect_snapshot() -> Snapshot:
                          systemctl_active("NetworkManager.service"),
                          systemctl_active("lcd-lockfile.service", user=True))),
         wifi_line1=wifi_line1, wifi_line2=wifi_line2,
-        uptime=uptime_seconds(), cpu_temp=cpu_temp_c(), usb_count=usb_count(),
+        uptime=uptime_seconds(), cpu_temp=cpu_temp_c(), rtc_temp=rtc_temp_c(), usb_count=usb_count(),
         rfid=rfid_state(), cpu_freq=cpu_freq_label(), process_count=process_count(),
     )

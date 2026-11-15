@@ -32,6 +32,7 @@ class Snapshot:
     wifi_line2: str
     uptime: int | None
     cpu_temp: str
+    rtc_temp: str
     usb_count: int
     rfid: str
     cpu_freq: str

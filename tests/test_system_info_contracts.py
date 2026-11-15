@@ -11,7 +11,7 @@ def sample(**overrides):
                   home_pct="36%", home_free="28G", err_count=0, warn_count=0,
                   last_log="none", addrs=["27"], camera_count=0, failed_count=0,
                   throttle="thr ok", services_ok=True, wifi_line1="WIFI none",
-                  wifi_line2="no wlan ifaces", uptime=3600, cpu_temp="54C",
+                  wifi_line2="no wlan ifaces", uptime=3600, cpu_temp="54C", rtc_temp="31C",
                   usb_count=2, rfid="rf-none", cpu_freq="1200MHz", process_count=50)
     values.update(overrides)
     return Snapshot(**values)
@@ -22,6 +22,7 @@ def test_normal_frames_preserve_order_and_format():
     assert [f.key for f in frames] == ["host", "net", "wifi", "health", "disk", "devices"]
     assert frames[0].line1 == "HOST gway-001"
     assert frames[1].line1 == "NET eth0 ok"
+    assert frames[3].line1 == "SOC54C RTC31C"
     assert all(len(f.line1) <= 16 and len(f.line2) <= 16 for f in frames)
 
 
@@ -51,11 +52,26 @@ def test_dry_run_never_creates_lockfiles(tmp_path):
 
 
 def test_missing_metrics_remain_unknown():
-    frames = formatting.build_frames(sample(ram_pct=None, cpu_temp="?C", iface="none",
+    frames = formatting.build_frames(sample(ram_pct=None, cpu_temp="?C", rtc_temp="?C", iface="none",
                                             ip_addr="", reachable=False))
     assert frames[1].line2 == "no primary ip"
-    assert frames[3].line1 == "HEALTH ?C"
+    assert frames[3].line1 == "SOC?C RTC?C"
     assert "RAM?%" in frames[3].line2
+
+
+def test_rtc_temperature_uses_only_valid_ds3231(tmp_path):
+    hwmon = tmp_path / "hwmon3"
+    hwmon.mkdir()
+    (hwmon / "name").write_text("ds3231\n")
+    (hwmon / "temp1_input").write_text("31250\n")
+    assert collectors.rtc_temp_c(tmp_path) == "31C"
+    (hwmon / "temp1_input").write_text("invalid")
+    assert collectors.rtc_temp_c(tmp_path) == "?C"
+    (hwmon / "temp1_input").write_text("126000")
+    assert collectors.rtc_temp_c(tmp_path) == "?C"
+    (hwmon / "name").write_text("other")
+    (hwmon / "temp1_input").write_text("31250")
+    assert collectors.rtc_temp_c(tmp_path) == "?C"
 
 
 def test_command_runner_timeout_is_nonfatal(monkeypatch):
