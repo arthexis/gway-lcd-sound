@@ -25,9 +25,7 @@ class Snapshot:
     last_log: str
     addrs: list[str]
     camera_count: int
-    failed_count: int
     throttle: str
-    services_ok: bool
     wifi_line1: str
     wifi_line2: str
     uptime: int | None
@@ -36,4 +34,4 @@ class Snapshot:
     usb_count: int
     rfid: str
     cpu_freq: str
-    process_count: int
+    deployment_lines: tuple[str, str] | None

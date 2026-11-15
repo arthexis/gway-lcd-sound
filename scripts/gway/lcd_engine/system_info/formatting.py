@@ -15,8 +15,8 @@ def build_frames(snapshot: Snapshot) -> list[Frame]:
     ]
     if s.throttle != "thr ok":
         frames.insert(5, Frame("power", compact(f"PWR {s.cpu_freq}"), compact(s.throttle)))
-    if s.failed_count or not s.services_ok:
-        frames.insert(6, Frame("services", compact(f"SERV fail {s.failed_count}"), compact(f"{'core ok' if s.services_ok else 'check'} p{s.process_count}")))
+    if s.deployment_lines is not None:
+        frames.append(Frame("deployments", *s.deployment_lines))
     if s.err_count or s.warn_count:
         frames.append(Frame("logs", compact(f"LOG e{s.err_count} w{s.warn_count}"), compact(f"last {s.last_log}")))
     return frames
