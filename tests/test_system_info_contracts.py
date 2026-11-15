@@ -99,3 +99,18 @@ def test_wifi_summary_shows_connected_ssid_below_ap_status(monkeypatch):
     monkeypatch.setattr(collectors, "run", run)
 
     assert collectors.wifi_summary() == ("WIFI wlan0 AP1", "IZZI-158E")
+
+
+def test_wifi_summary_shows_ap_ssid_when_no_client_connection(monkeypatch):
+    monkeypatch.setattr(collectors, "wlan_interfaces", lambda: ["wlan0"])
+    monkeypatch.setattr(collectors, "run", lambda argv, timeout: {
+        ("iw", "dev", "wlan0", "info"): "type AP\nssid arthexis-1\n",
+        ("iw", "dev", "wlan0", "station", "dump"): "",
+    }[tuple(argv)])
+    assert collectors.wifi_summary() == ("WIFI wlan0 AP0", "arthexis-1")
+
+
+def test_wifi_summary_handles_missing_ap_ssid(monkeypatch):
+    monkeypatch.setattr(collectors, "wlan_interfaces", lambda: ["wlan0"])
+    monkeypatch.setattr(collectors, "run", lambda argv, timeout: "type AP\n" if argv[-1] == "info" else "")
+    assert collectors.wifi_summary() == ("WIFI wlan0 AP0", "SSID unavailable")
