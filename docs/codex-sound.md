@@ -41,3 +41,31 @@ uses `bash scripts/deploy/install.sh rollback`; Codex hook configuration
 remains operator-managed. Physical audio preview requires separate approval.
 
 Optional cancellation event: `Interrupt` resolves to the existing `warning` cue. The local Codex hook remains opt-in and subject to operator review; no installer changes hook configuration.
+
+## MCP tool sounds
+
+For Codex local sessions, optional tool hooks can announce MCP calls using the
+release-owned LCD Sound command. The start cue is `busy`; the finish cue is
+`ok`, meaning that the tool returned, not necessarily that it succeeded.
+Each sound and the dedicated `mcp` motif share a 20-second window. Tool hooks
+must be reviewed and trusted in Codex, and their coverage depends on the tool
+execution path. This does not configure other MCP clients or change executor
+permissions.
+
+```toml
+[[hooks.PreToolUse]]
+matcher = "^mcp__.*"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "$HOME/.local/bin/gway-lcd-sound sound play --event tool-started --source mcp --within 20"
+async = true
+timeout = 10
+
+[[hooks.PostToolUse]]
+matcher = "^mcp__.*"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "$HOME/.local/bin/gway-lcd-sound sound play --event tool-finished --source mcp --within 20"
+async = true
+timeout = 10
+```

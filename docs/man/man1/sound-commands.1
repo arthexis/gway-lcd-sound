@@ -60,6 +60,12 @@ Volume from 0.0 to 1.0.
 Play a sound, event earcon, or custom pattern COUNT times (1 through 20; default 1).
 A source motif is announced only once per event invocation.
 .TP
+.BI --within " SECONDS"
+Suppress the same named sound and motif from opt-in invocations for this many seconds
+(0 through 86400). Concurrent calls share the private sound event database.
+Muted, failed, and dry-run attempts do not start the window. Explicit repeats
+within one invocation remain intact.
+.TP
 .BI --pause " SECONDS"
 Delay between repetitions or all/test sounds (0 through 3 seconds; default 0.35).
 No delay is added after the final repeat.

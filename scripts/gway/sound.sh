@@ -430,6 +430,8 @@ DEFAULT_EVENTS = (
     ("codex", "SubagentStop", "notice"),
     ("codex", "Stop", "ok"),
     ("codex", "Interrupt", "warning"),
+    ("mcp", "tool-started", "busy"),
+    ("mcp", "tool-finished", "ok"),
     ("gway-remote", "deploy-started", "busy"),
     ("gway-remote", "deploy-activated", "notice"),
     ("gway-remote", "deploy-verified", "ok"),
@@ -513,6 +515,7 @@ def event_database(path=DEFAULT_EVENT_DB):
     connection.execute("CREATE TABLE IF NOT EXISTS motifs (source TEXT PRIMARY KEY, notes TEXT NOT NULL, cooldown_seconds REAL NOT NULL DEFAULT 45)")
     connection.execute("CREATE TABLE IF NOT EXISTS sounds (name TEXT PRIMARY KEY, notes TEXT NOT NULL)")
     connection.execute("CREATE TABLE IF NOT EXISTS motif_context (slot INTEGER PRIMARY KEY CHECK(slot=1), source TEXT NOT NULL, played_at REAL NOT NULL)")
+    connection.execute("CREATE TABLE IF NOT EXISTS sound_within (sound TEXT PRIMARY KEY, played_at REAL NOT NULL)")
     if created:
         connection.executemany("INSERT OR IGNORE INTO events VALUES (?, ?, ?)", DEFAULT_EVENTS)
     # Idempotent seed also applies to databases created by S1.
@@ -521,6 +524,7 @@ def event_database(path=DEFAULT_EVENT_DB):
         "INSERT OR IGNORE INTO motifs(source,notes,cooldown_seconds) VALUES (?,?,?)",
         (
             ("codex", json.dumps([[659, 0.18, 0.09], [988, 0.28, 0.0]]), 45),
+            ("mcp", json.dumps([[523, 0.055, 0.025], [659, 0.055, 0.025], [494, 0.10, 0.0]]), 20),
             ("gway-monitor", json.dumps([[330, 0.16, 0.07], [494, 0.11, 0.04], [659, 0.08, 0.0]]), 45),
             ("ssh", json.dumps([[440, 0.08, 0.05], [659, 0.12, 0.0]]), 60),
             ("gway-remote", json.dumps([[392, 0.08, 0.05], [784, 0.08, 0.06], [587, 0.24, 0.0]]), 45),
@@ -689,6 +693,35 @@ def play_event(resolved, args):
                 repeat_playback(play_one_event, args)
 
 
+def play_within(name, args, callback, motif=None):
+    """Optionally suppress identical named sounds and motifs across opt-in invocations.
+
+    Serialize the check, playback and commit across processes. Muted, failed and
+    dry-run attempts do not advance the window. Repeats are one invocation.
+    """
+    if args.within is None:
+        return callback()
+    db_path = os.path.abspath(args.event_db)
+    identity = json.dumps([name, motif], separators=(",", ":"))
+    with event_database(db_path):
+        pass
+    lock_path = os.path.join(os.path.dirname(db_path), "sound-within.lock")
+    with open(lock_path, "a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with event_database(db_path) as db:
+            row = db.execute("SELECT played_at FROM sound_within WHERE sound=?", (identity,)).fetchone()
+            now = time.time()
+            if row and 0 <= now - row[0] < args.within:
+                log_backend(f"sound={name} skipped=within")
+                return
+            if args.dry_run or playback_muted() or args.volume <= 0:
+                return callback()
+            callback()
+            db.execute("INSERT INTO sound_within(sound,played_at) VALUES (?,?) "
+                       "ON CONFLICT(sound) DO UPDATE SET played_at=excluded.played_at", (identity, now))
+            db.commit()
+
+
 def list_sounds():
     for name in PATTERNS:
         print(f"{name:<9} {DESCRIPTIONS[name]}")
@@ -717,6 +750,7 @@ def build_parser():
     parser.add_argument("--volume", type=float, default=0.42, help="0.0-1.0, default 0.42")
     parser.add_argument("--pause", type=float, default=0.35, help="seconds between repeats or sounds (0-3)")
     parser.add_argument("--repeat", type=int, default=1, help="plays per invocation (1-20; default 1)")
+    parser.add_argument("--within", type=float, help="suppress the same sound and motif for N seconds (0-86400)")
     parser.add_argument("--backend", choices=("auto", "audio", "gpio"), default=DEFAULT_BACKEND, help="playback backend; normal earcons use gpio")
     parser.add_argument("--device", default=DEFAULT_AUDIO_DEVICE, help="PulseAudio/PipeWire sink or ALSA device")
     parser.add_argument("--dry-run", action="store_true", help="print patterns without playing")
@@ -733,6 +767,10 @@ def main(argv):
         parser.error("--pause must be between 0 and 3 seconds")
     if not 1 <= args.repeat <= 20:
         parser.error("--repeat must be between 1 and 20")
+    if args.within is not None and (not math.isfinite(args.within) or not 0 <= args.within <= 86400):
+        parser.error("--within must be between 0 and 86400 seconds")
+    if args.within is not None and (args.sequence is not None or args.pattern_json or args.list_motifs or args.resolve):
+        parser.error("--within requires a named sound or event playback")
     args.backend = (args.backend or "auto").strip().lower()
     if args.sequence is not None:
         if args.pattern_json or args.event or args.motif or args.resolve or args.source or args.sound != "list":
@@ -801,17 +839,25 @@ def main(argv):
         if resolved["sound"] is None:
             # Unknown events stay silent, not an implicit 'ok' beep.
             return 0
-        play_event(resolved, args)
+        with event_database(args.event_db) as db:
+            event_motif = motif_identity(resolved["source"])
+            if motif_for(event_motif, db) is None:
+                event_motif = None
+        play_within(resolved["sound"], args, lambda: play_event(resolved, args), event_motif)
         return 0
     else:
         requested = args.sound.strip().lower().replace("_", "-")
 
     if requested in {"list", "ls"}:
+        if args.within is not None:
+            parser.error("--within requires a named sound or event playback")
         if args.repeat != 1:
             parser.error("--repeat requires playback")
         list_sounds()
         return 0
     if requested in {"all", "test", "demo"}:
+        if args.within is not None:
+            parser.error("--within requires a named sound or event playback")
         names = list(PATTERNS)
         for index, name in enumerate(names):
             if not args.dry_run and playback_muted():
@@ -827,32 +873,34 @@ def main(argv):
         custom = custom_pattern(requested, db)
     if requested not in PATTERNS and custom is None:
         parser.error(f"unknown sound: {requested}")
-    if args.motif:
-        with event_database(args.event_db) as db:
-            motif = motif_for(args.motif, db)
-            if motif is None:
-                parser.error("unknown motif")
-        db_path = os.path.abspath(args.event_db)
-        lock_path = os.path.join(os.path.dirname(db_path), "motif-play.lock")
-        with open(lock_path, "a+b") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            private_name = "__manual_motif__"
-            PATTERNS[private_name] = motif[0]
-            try:
-                if args.dry_run or not playback_muted():
-                    play_pattern(private_name, pin=args.pin, volume=args.volume,
-                                 backend=args.backend, device=args.device, dry_run=args.dry_run)
-                repeat_playback(lambda: (
-                    play_custom(requested, custom, args) if custom is not None else
-                    play_pattern(requested, pin=args.pin, volume=args.volume,
-                                 backend=args.backend, device=args.device, dry_run=args.dry_run)), args)
-            finally:
-                PATTERNS.pop(private_name, None)
-    else:
-        repeat_playback(lambda: (
-            play_custom(requested, custom, args) if custom is not None else
-            play_pattern(requested, pin=args.pin, volume=args.volume,
-                         backend=args.backend, device=args.device, dry_run=args.dry_run)), args)
+    def play_direct():
+        if args.motif:
+            with event_database(args.event_db) as db:
+                motif = motif_for(args.motif, db)
+                if motif is None:
+                    parser.error("unknown motif")
+            db_path = os.path.abspath(args.event_db)
+            lock_path = os.path.join(os.path.dirname(db_path), "motif-play.lock")
+            with open(lock_path, "a+b") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                private_name = "__manual_motif__"
+                PATTERNS[private_name] = motif[0]
+                try:
+                    if args.dry_run or not playback_muted():
+                        play_pattern(private_name, pin=args.pin, volume=args.volume,
+                                     backend=args.backend, device=args.device, dry_run=args.dry_run)
+                    repeat_playback(lambda: (
+                        play_custom(requested, custom, args) if custom is not None else
+                        play_pattern(requested, pin=args.pin, volume=args.volume,
+                                     backend=args.backend, device=args.device, dry_run=args.dry_run)), args)
+                finally:
+                    PATTERNS.pop(private_name, None)
+        else:
+            repeat_playback(lambda: (
+                play_custom(requested, custom, args) if custom is not None else
+                play_pattern(requested, pin=args.pin, volume=args.volume,
+                             backend=args.backend, device=args.device, dry_run=args.dry_run)), args)
+    play_within(requested, args, play_direct, motif_identity(args.motif) if args.motif else None)
     return 0
 
 

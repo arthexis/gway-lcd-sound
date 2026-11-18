@@ -270,3 +270,18 @@ states: `H` healthy, `B` unhealthy, `N` not applicable, and `?` unknown.
 These are separate observations; activation does not prove runtime health.
 If the tool fails or times out the frame says `DEP unavailable`; if the tool
 is not installed, the frame is omitted. For details use `gway-remote status`.
+
+### Suppressing repeated sounds
+
+`sound --event deploy-started --source gway-remote --within 30` plays the
+sound once, then suppresses opt-in invocations resolving to the same sound
+and motif for 30 seconds, even across sources sharing that motif. The same
+sound with a different motif or no motif remains independent. The private event database stores the last successful
+opt-in playback; calls without `--within` remain unchanged. Muted, failed and
+`--dry-run` attempts do not start a window, and `--repeat` remains a sequence
+within one invocation. `--within` is for named sounds and resolved events.
+
+Codex MCP tool hooks may use `sound --event tool-started --source mcp --within 20`
+and `tool-finished` for a distinct MCP motif and start/finish cues. Hooks must
+be configured and trusted in Codex; other MCP clients do not use Codex hooks.
+A finish cue means the tool returned, not that it succeeded.
