@@ -22,7 +22,7 @@ Commands:
   hotplug EVENT                Play the event sound for a hotplug event.
   mute toggle [--status]       Toggle, or inspect, GPIO sound mute state.
   piano [OPTIONS]             Compose and edit motifs/event sounds.
-  notify [OPTIONS]             Send a system notification.
+  notify [OPTIONS]             Send a system notification.\n  route set|status|test|local   Configure a hardware destination (control plane only).
 
 Each command replaces the corresponding legacy helper.  See gway-lcd-sound(1).
 EOF
@@ -97,6 +97,10 @@ case "$command" in
   piano)
     shift
     exec python3 "$script_dir/gway-piano.py" "$@"
+    ;;
+  route)
+    shift
+    exec python3 "$script_dir/route_config.py" "$@"
     ;;
   notify)
     shift
