@@ -103,6 +103,11 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
             or result.get("request_id") != payload["request_id"]
             or result.get("status") != "succeeded"):
         raise RuntimeError("remote delivery unconfirmed")
+    if payload["action"] == "status":
+        output = result.get("output")
+        if type(output) is not str or len(output.encode("utf-8")) > 4096:
+            raise RuntimeError("invalid remote status")
+        sys.stdout.write(output)
     return 0
 
 
