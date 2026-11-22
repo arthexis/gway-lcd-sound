@@ -22,7 +22,7 @@ Commands:
   hotplug EVENT                Play the event sound for a hotplug event.
   mute toggle [--status]       Toggle, or inspect, GPIO sound mute state.
   piano [OPTIONS]             Compose and edit motifs/event sounds.
-  notify [OPTIONS]             Send a system notification.
+  notify [OPTIONS]             Send a system notification.\n  route set|status|test|local   Configure a hardware destination (control plane only).
 
 Each command replaces the corresponding legacy helper.  See gway-lcd-sound(1).
 EOF
@@ -44,7 +44,7 @@ command="${1:-}"
 case "$command" in
   lcd)
     case "${2:-}" in
-      status|show|clear) shift; exec python3 "$script_dir/lcd_control.py" "$@" ;;
+      status|show|clear) shift; exec python3 "$script_dir/route_send.py" lcd "$@" ;;
       monitor) ;;
       *) usage >&2; exit 64 ;;
     esac
@@ -57,21 +57,22 @@ case "$command" in
     [[ $# -ge 2 ]] || { usage >&2; exit 64; }
     shift
     case "$1" in
-      status) shift; exec bash "$script_dir/sound.sh" status "$@" ;;
+      status) shift; exec python3 "$script_dir/route_send.py" sound status "$@" ;;
       play)
         shift
         if [[ "${1:-}" == "--sequence" ]]; then
           [[ $# -eq 2 || ( $# -eq 3 && "${3:-}" == "--dry-run" ) ]] || { echo "sound: --sequence requires JSON and optional --dry-run" >&2; exit 64; }
-          exec bash "$script_dir/sound.sh" --sequence "$2" "${@:3}"
+          exec python3 "$script_dir/route_send.py" sound play --sequence "$2" "${@:3}"
         fi
         [[ $# -gt 0 ]] || { usage >&2; exit 64; }
-        exec bash "$script_dir/sound.sh" "$@" ;;
+        exec python3 "$script_dir/route_send.py" sound play "$@" ;;
 
-      unmute|toggle) op="$1"; shift; exec bash "$script_dir/sound.sh" "$op" "$@" ;;
+      unmute|toggle) op="$1"; shift; exec python3 "$script_dir/route_send.py" sound "$op" "$@" ;;
       hotplug) shift; exec "$script_dir/gway-event-sound-hotplug" "$@" ;;
       mute)
         if [[ "${2:-}" == "toggle" ]]; then shift 2; exec "$script_dir/gway-toggle-gpio-sound-mute" "$@"; fi
-        shift; exec bash "$script_dir/sound.sh" mute "$@" ;;
+        shift; exec python3 "$script_dir/route_send.py" sound mute "$@" ;;
+      event) shift; exec python3 "$script_dir/route_send.py" sound event "$@" ;;
       piano) shift; exec python3 "$script_dir/gway-piano.py" "$@" ;;
       *) usage >&2; exit 64 ;;
     esac
@@ -97,6 +98,10 @@ case "$command" in
   piano)
     shift
     exec python3 "$script_dir/gway-piano.py" "$@"
+    ;;
+  route)
+    shift
+    exec python3 "$script_dir/route_config.py" "$@"
     ;;
   notify)
     shift

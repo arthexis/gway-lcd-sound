@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Optional compatibility shim for legacy lcd show/status/clear.
+set -euo pipefail
+script_dir="$(cd -P -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+exec python3 "$script_dir/route_send.py" lcd "$@"
