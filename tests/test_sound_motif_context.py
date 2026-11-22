@@ -29,6 +29,18 @@ class MotifTests(unittest.TestCase):
             db.execute("INSERT OR REPLACE INTO motif_context VALUES (1,?,?)",
                        (source, played_at))
 
+    def test_gm_motif_seed_and_customization_preserved(self):
+        self.call()
+        with sqlite3.connect(self.db) as db:
+            notes, cooldown = db.execute("SELECT notes,cooldown_seconds FROM motifs WHERE source='gm'").fetchone()
+            self.assertEqual([step[0] for step in json.loads(notes)], [392, 523, 659, 784, 698, 659, 523, 392])
+            self.assertEqual(cooldown, 45)
+            custom = json.dumps([[440, 0.1, 0.0]])
+            db.execute("UPDATE motifs SET notes=?, cooldown_seconds=30 WHERE source='gm'", (custom,))
+        self.call()
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute("SELECT notes,cooldown_seconds FROM motifs WHERE source='gm'").fetchone(), (custom, 30))
+
     def test_remote_deployment_mapping_and_cooldown(self):
         expected = {"deploy-started": "busy", "deploy-activated": "notice",
                     "deploy-verified": "ok", "deploy-failed": "error",

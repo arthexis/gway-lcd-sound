@@ -208,6 +208,12 @@ runner notifications until those hooks are installed and field-tested.
 
 Codex lifecycle hooks invoke the existing `sound --event EVENT --source codex` directly, with a static event per configured hook. No new executable wrappers are installed. See [Codex sound integration](docs/codex-sound.md) for the eight-event mapping, preview and opt-in policy.
 
+## GM adventure motif
+
+`gm` is a short, original eight-note adventure fanfare with a lower final note. Play it before a
+notification with `sound ok --motif gm`; use `--dry-run` to preview the
+pattern. It is seeded without replacing an existing customized `gm` motif.
+
 ## Local piano composer
 
 Run `gway-lcd-sound piano` on GWay-001 to edit a monophonic motif or event sound.
