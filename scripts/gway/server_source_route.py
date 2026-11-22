@@ -80,7 +80,7 @@ def dispatch(event, *, config=None, opener=None):
     opener = opener or urllib.request.build_opener(
         urllib.request.ProxyHandler({}), _NoRedirect())
     try:
-        with opener.open(request, timeout=8) as response:
+        with opener.open(request, timeout=16) as response:
             code = response.status
             body = response.read(8193)
     except urllib.error.HTTPError as exc:
