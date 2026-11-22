@@ -134,3 +134,28 @@ revoked source, invalid response or timeout is an error and must not replay a
 new event after uncertainty. Record exact installed revision, prior release,
 service health and account ownership before controlled activation. Deactivate
 the route and revoke its source grant before rollback of the versioned release.
+
+### Repository producer compatibility review (static, not a live host audit)
+
+- `github-actions-sound-hook`: invokes the configured
+  `GWAY_RUNNER_SOUND_BIN` with `--event NAME --source github-actions`.
+  The installed `gway-sound-route` shim accepts that shape; opt-in is possible
+  **only after** inspecting the runner's actual service account, environment
+  and installed version. The hook is best effort and suppresses errors.
+- `gway-event-sound-hotplug`: similarly uses `GWAY_SOUND_BIN` with
+  `--event` and `--source`, compatible at the argument level. Do not
+  change unattended hotplug producers before confirming their host identity.
+- `codex-sound-hook`: invokes `sound NAME --volume VOLUME`. The routed
+  shim does not accept that option; **not compatible** without an explicit
+  argument-translation change. Do not silently switch it.
+- `gway_app_observer.py`: the user service remains shadow by default;
+  live ownership requires its existing explicit acknowledgement. Do not
+  activate or redirect its notifications simply because routing is installed.
+- `gway_event_sound_monitor.py`: local host monitor; not implicitly
+  rewritten into a remote route.
+
+These are **source-tree contracts**, not evidence of running producers on
+`ocpp-abb-1` or `gelectriic.com`. Production `systemctl show`, unit
+files, process credentials, integration endpoints and incumbent notification
+call sites are still mandatory acceptance evidence. Migrate independently
+per host and event class, preserving OCPP, MCP and Odoo behavior.
