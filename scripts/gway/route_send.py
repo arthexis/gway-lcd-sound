@@ -94,7 +94,7 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
     # Never run the sender-local hardware command after a failed bridge call.
     payload = event_for(device, list(args), target)
     from json import dumps
-    remote = runner(["gway-remote", "lcd-sound", "send"], input=dumps(payload).encode("utf-8"),
+    remote = runner(["gway-remote", "--lcd-sound-bridge", "send"], input=dumps(payload).encode("utf-8"),
                     capture_output=True, timeout=16, check=False)
     if remote.returncode:
         raise RuntimeError("remote delivery failed")
