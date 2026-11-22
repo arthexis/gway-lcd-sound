@@ -102,6 +102,15 @@ def check_enrollment(node):
     if not NODE.fullmatch(node):
         raise RoutingError("invalid node name")
     try:
+        from server_source_route import load as source_config, dispatch as source_dispatch
+        source = source_config()
+        if source is not None:
+            # Authenticated bounded status is the only supported source probe.
+            # Never treat an unverified URL or an HTTP response as enrollment.
+            from route_send import event_for
+            event = event_for("sound", ["status"], node, origin=source["origin"])
+            source_dispatch(event, config=source)
+            return
         probe = subprocess.run(["gway-remote", "--lcd-sound-bridge", "probe", node],
                                capture_output=True, timeout=12, check=False)
         if probe.returncode:
@@ -171,7 +180,11 @@ def main(argv=None):
             result = {"schema": SCHEMA, "lcd": routes["lcd"], "sound": routes["sound"], "tested": True}
     except (RoutingError, RuntimeError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         parser.exit(1, f"route: {exc}\n")
-    result["transport"] = "pinned_ssh" if result.get("lcd") or result.get("sound") else "local"
+    if result.get("lcd") or result.get("sound"):
+        from server_source_route import load as source_config
+        result["transport"] = "authenticated_https" if source_config() else "pinned_ssh"
+    else:
+        result["transport"] = "local"
     print(json.dumps(result, sort_keys=True))
     return 0
 
