@@ -21,7 +21,7 @@ def event_for(device, args, node, *, origin=None, request_id=None, now=None):
     if device not in ("lcd", "sound"):
         raise ValueError("invalid device")
     origin = origin or socket.gethostname().split(".")[0]
-    if not re.fullmatch(r"(watchtower|gway-[0-9]{3,})", origin):
+    if not re.fullmatch(r"(watchtower|gway-[0-9]{3,}|ocpp-abb-1|gelectriic\.com)", origin):
         raise ValueError("unrecognized sender identity")
     if origin == node:
         raise ValueError("self routing prohibited")
@@ -92,13 +92,19 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
             cmd = ["bash", str(here / "sound.sh"), *local_args]
         return runner(cmd, check=False).returncode
     # Never run the sender-local hardware command after a failed bridge call.
-    payload = event_for(device, list(args), target)
-    from json import dumps
-    remote = runner(["gway-remote", "--lcd-sound-bridge", "send"], input=dumps(payload).encode("utf-8"),
+    from server_source_route import load as source_config, dispatch as source_dispatch
+    source = source_config()
+    payload = event_for(device, list(args), target,
+                        origin=source["origin"] if source else None)
+    if source is not None:
+        result = source_dispatch(payload, config=source)
+    else:
+        from json import dumps
+        remote = runner(["gway-remote", "--lcd-sound-bridge", "send"], input=dumps(payload).encode("utf-8"),
                     capture_output=True, timeout=16, check=False)
-    if remote.returncode:
-        raise RuntimeError("remote delivery failed")
-    result = json.loads(remote.stdout)
+        if remote.returncode:
+            raise RuntimeError("remote delivery failed")
+        result = json.loads(remote.stdout)
     if (type(result) is not dict or result.get("node") != target
             or result.get("request_id") != payload["request_id"]
             or result.get("status") != "succeeded"):

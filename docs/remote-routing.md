@@ -77,3 +77,85 @@ migrated by this Draft branch.
   read/status then a benign sound/display, with rollback prepared.
 - No branch merge, production deploy, SSH/ForceCommand or WireGuard
   change is authorized by this documentation.
+
+## Authenticated server source routing (issue gway-remote #687)
+
+An **optional** per-user source configuration extends the existing route
+selection to send from the audited producer account on `ocpp-abb-1` or
+`gelectriic.com` through Watchtower. Source routing is not activated by
+package installation. The ordinary local/default and Watchtower pinned-SSH
+routes stay as before.
+
+For the actual service account on **each host**, an operator separately
+provisions two private files (never commit these files or credentials):
+
+- `~/.config/gway-lcd-sound/server-source.json` owned by that account, mode
+  `0600`, in a mode `0700` owned directory:
+  `{"schema":1,"origin":"ocpp-abb-1","url":"https://remote.arthexis.com/v1/lcd-sound/event","token_file":"/home/<service-user>/.config/gway-lcd-sound/server-source.token"}`.
+  For the website service use `"origin":"gelectriic.com"`.
+- `~/.config/gway-lcd-sound/server-source.token`, same owner, mode `0600`,
+  containing **only the separately issued, revocable** `gway:lcd-sound`
+  bearer for this specific source. The token path must be exactly adjacent to
+  the configuration, not a symlink. Never copy Watchtower's SSH identity.
+
+The HTTPS URL is fixed in the client implementation; redirects, environment
+HTTP proxies and non-TLS URLs are forbidden. System CA trust validates TLS;
+do not disable verification. Both hosts must be approved explicitly in the
+operator-owned Watchtower grants for `gway-001` and their exact event classes.
+The HTTPS endpoint is not published or activated by this PR.
+
+After verifying the live event-producer user and obtaining a real,
+authorized **read-only** status acknowledgment, run under that **same** user:
+
+```sh
+gway-lcd-sound route set gway-001 --sound
+gway-lcd-sound route status --json
+gway-lcd-sound route test
+```
+
+Use `--lcd` for a separately accepted LCD route. Every setting is per user;
+setting `ubuntu`'s route does not change a systemd producer running as another
+account. `route set` probes an authenticated sound status before writing.
+Remote failed/uncertain events **never** run on local sender hardware.
+`route local --sound` and `route local --lcd` restore that user's local
+route; source credentials are revoked separately at Watchtower.
+
+Do not assume that `sound`, `lcd`, application notification hooks, existing
+systemd units or shell aliases call `gway-lcd-sound`. Audit actual
+`ExecStart`, `User`, `HOME`, `PATH` and callsites, then migrate only an
+approved set of producers explicitly to the release-owned
+`gway-sound-route` and `gway-lcd-route` shims. Other local-only controls
+such as the ethernet monitor and interactive piano remain local.
+Receiver sound motifs, mute, priority and cooldown stay owned by gway-001.
+
+A 200/JSON succeeded receipt proves Watchtower acknowledged the pinned relay
+result, **not** human-observed audio/LCD effects. A 202, refused TLS,
+revoked source, invalid response or timeout is an error and must not replay a
+new event after uncertainty. Record exact installed revision, prior release,
+service health and account ownership before controlled activation. Deactivate
+the route and revoke its source grant before rollback of the versioned release.
+
+### Repository producer compatibility review (static, not a live host audit)
+
+- `github-actions-sound-hook`: invokes the configured
+  `GWAY_RUNNER_SOUND_BIN` with `--event NAME --source github-actions`.
+  The installed `gway-sound-route` shim accepts that shape; opt-in is possible
+  **only after** inspecting the runner's actual service account, environment
+  and installed version. The hook is best effort and suppresses errors.
+- `gway-event-sound-hotplug`: similarly uses `GWAY_SOUND_BIN` with
+  `--event` and `--source`, compatible at the argument level. Do not
+  change unattended hotplug producers before confirming their host identity.
+- `codex-sound-hook`: invokes `sound NAME --volume VOLUME`. The routed
+  shim does not accept that option; **not compatible** without an explicit
+  argument-translation change. Do not silently switch it.
+- `gway_app_observer.py`: the user service remains shadow by default;
+  live ownership requires its existing explicit acknowledgement. Do not
+  activate or redirect its notifications simply because routing is installed.
+- `gway_event_sound_monitor.py`: local host monitor; not implicitly
+  rewritten into a remote route.
+
+These are **source-tree contracts**, not evidence of running producers on
+`ocpp-abb-1` or `gelectriic.com`. Production `systemctl show`, unit
+files, process credentials, integration endpoints and incumbent notification
+call sites are still mandatory acceptance evidence. Migrate independently
+per host and event class, preserving OCPP, MCP and Odoo behavior.
