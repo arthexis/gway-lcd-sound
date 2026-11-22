@@ -102,7 +102,7 @@ def check_enrollment(node):
     if not NODE.fullmatch(node):
         raise RoutingError("invalid node name")
     try:
-        probe = subprocess.run(["gway-remote", "lcd-sound", "probe", node],
+        probe = subprocess.run(["gway-remote", "--lcd-sound-bridge", "probe", node],
                                capture_output=True, timeout=12, check=False)
         if probe.returncode:
             raise RoutingError("trusted GWay Remote node inventory unavailable")
