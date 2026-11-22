@@ -21,7 +21,7 @@ def event_for(device, args, node, *, origin=None, request_id=None, now=None):
     if device not in ("lcd", "sound"):
         raise ValueError("invalid device")
     origin = origin or socket.gethostname().split(".")[0]
-    if not re.fullmatch(r"(watchtower|gway-[0-9]{3,}|ocpp-abb-1|gelectriic\\.com)", origin):
+    if not re.fullmatch(r"(watchtower|gway-[0-9]{3,}|ocpp-abb-1|gelectriic\.com)", origin):
         raise ValueError("unrecognized sender identity")
     if origin == node:
         raise ValueError("self routing prohibited")
