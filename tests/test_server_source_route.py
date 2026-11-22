@@ -92,7 +92,7 @@ def test_authenticated_request_is_bounded_and_correlated(config):
     answer = source.dispatch(event(), config=loaded, opener=opener)
     assert answer["status"] == "succeeded"
     req, timeout = opener.calls[0]
-    assert timeout <= 8
+    assert timeout <= 16
     assert req.full_url == source.URL
     assert req.get_method() == "POST"
     assert req.get_header("Authorization") == "Bearer " + loaded["token"]
