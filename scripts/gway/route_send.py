@@ -83,7 +83,13 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
         if device == "lcd":
             cmd = [sys.executable, str(here / "lcd_control.py"), *args]
         else:
-            cmd = ["bash", str(here / "sound.sh"), *args]
+            if args and args[0] == "play":
+                local_args = args[1:]
+            elif args and args[0] == "event":
+                local_args = ["--event", args[1], "--source", args[2], *args[3:]]
+            else:
+                local_args = args
+            cmd = ["bash", str(here / "sound.sh"), *local_args]
         return runner(cmd, check=False).returncode
     # Never run the sender-local hardware command after a failed bridge call.
     payload = event_for(device, list(args), target)
