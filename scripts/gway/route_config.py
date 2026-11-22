@@ -120,7 +120,7 @@ def check_enrollment(node):
                 or result.get("status") != "eligible"
                 or result.get("transport") != "pinned_ssh"):
             raise RoutingError("pinned node probe rejected")
-    except (OSError, subprocess.TimeoutExpired, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError, json.JSONDecodeError) as exc:
         raise RoutingError("trusted GWay Remote node inventory unavailable") from exc
 
 
