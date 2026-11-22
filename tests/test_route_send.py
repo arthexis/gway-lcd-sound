@@ -77,3 +77,36 @@ def test_rejects_unsupported_commands():
     for device, args in [("lcd", ["monitor", "eth0"]), ("sound", ["piano"]), ("sound", ["play", "name", "--bogus"])]:
         with pytest.raises(ValueError):
             route_send.event_for(device, args, "gway-001", origin="watchtower")
+
+def test_server_source_route_calls_authenticated_gateway_not_local(monkeypatch):
+    import server_source_route
+    config = {"origin": "ocpp-abb-1", "url": server_source_route.URL, "token": "sealed"}
+    monkeypatch.setattr(server_source_route, "load", lambda: config)
+    seen = []
+    monkeypatch.setattr(server_source_route, "dispatch",
+                        lambda e, *, config: seen.append((e, config)) or {
+                            "node": e["node"], "request_id": e["request_id"],
+                            "source": e["origin"], "status": "succeeded"})
+    def runner(*_args, **_kwargs):
+        raise AssertionError("neither local hardware nor legacy SSH should run")
+    assert route_send.execute("sound", ["play", "notice"],
+                              route=fake_route(), runner=runner) == 0
+    assert len(seen) == 1
+    assert seen[0][0]["origin"] == "ocpp-abb-1"
+
+
+def test_server_source_failure_never_falls_back(monkeypatch):
+    import server_source_route
+    monkeypatch.setattr(server_source_route, "load",
+                        lambda: {"origin": "gelectriic.com", "url": server_source_route.URL,
+                                 "token": "sealed"})
+    calls = []
+    def fail(event, *, config):
+        calls.append(event)
+        raise RuntimeError("uncertain")
+    monkeypatch.setattr(server_source_route, "dispatch", fail)
+    with pytest.raises(RuntimeError):
+        route_send.execute("sound", ["play", "notice"], route=fake_route(),
+                           runner=lambda *a, **k: pytest.fail("local fallback"))
+    assert len(calls) == 1
+    assert calls[0]["origin"] == "gelectriic.com"
