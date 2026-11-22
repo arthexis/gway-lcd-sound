@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Optional, release-owned compatibility shim; never automatically replaces /usr/local/bin/sound.
+set -euo pipefail
+script_dir="$(cd -P -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+if [[ "${1:-}" == "--event" ]]; then
+  [[ $# -ge 4 && "$3" == "--source" ]] || { echo "sound: expected --event NAME --source SOURCE" >&2; exit 64; }
+  event="$2"
+  source="$4"
+  shift 4
+  exec python3 "$script_dir/route_send.py" sound event "$event" "$source" "$@"
+fi
+if [[ "${1:-}" == "--sequence" ]]; then
+  shift
+  exec python3 "$script_dir/route_send.py" sound play --sequence "$@"
+fi
+case "${1:-}" in
+  status|mute|unmute|toggle)
+    exec python3 "$script_dir/route_send.py" sound "$@" ;;
+  ""|--help|-h)
+    exec bash "$script_dir/sound.sh" "$@" ;;
+  *)
+    exec python3 "$script_dir/route_send.py" sound play "$@" ;;
+esac
