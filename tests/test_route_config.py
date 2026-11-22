@@ -93,4 +93,4 @@ def test_transport_test_fails_not_false_success(monkeypatch, config, capsys):
     with pytest.raises(SystemExit) as err:
         route.main(["test"])
     assert err.value.code == 1
-    assert "not yet enabled" in capsys.readouterr().err
+    assert "no remote routes configured" in capsys.readouterr().err
