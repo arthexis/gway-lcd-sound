@@ -169,7 +169,7 @@ def main(argv=None):
                 if routes[device] is not None and execute(device, ["status"], route=routes):
                     raise RoutingError("remote device test failed")
             result = {"schema": SCHEMA, "lcd": routes["lcd"], "sound": routes["sound"], "tested": True}
-    except (RoutingError, OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (RoutingError, RuntimeError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         parser.exit(1, f"route: {exc}\n")
     result["transport"] = "pinned_ssh" if result.get("lcd") or result.get("sound") else "local"
     print(json.dumps(result, sort_keys=True))
