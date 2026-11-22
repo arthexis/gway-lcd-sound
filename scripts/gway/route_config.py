@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import tempfile
 
 NODE = re.compile(r"gway-[0-9]{3,}$")
@@ -95,23 +96,23 @@ def save(value, path=None):
 
 
 def check_enrollment(node):
-    """Read only GWay Remote's authoritative, root-owned inventory; never DNS."""
+    """Validate current eligibility and pinned reachability via the installed
+    GWay Remote CLI; never use DNS or trust user-provided IP addresses.
+    """
     if not NODE.fullmatch(node):
         raise RoutingError("invalid node name")
     try:
-        from gway_remote.node_registry_inventory import load
-        inventory = load()
-    except (ImportError, OSError, ValueError, PermissionError) as exc:
+        probe = subprocess.run(["gway-remote", "lcd-sound", "probe", node],
+                               capture_output=True, timeout=12, check=False)
+        if probe.returncode:
+            raise RoutingError("trusted GWay Remote node inventory unavailable")
+        result = json.loads(probe.stdout)
+        if (type(result) is not dict or result.get("node") != node
+                or result.get("status") != "eligible"
+                or result.get("transport") != "pinned_ssh"):
+            raise RoutingError("pinned node probe rejected")
+    except (OSError, subprocess.TimeoutExpired, ValueError, json.JSONDecodeError) as exc:
         raise RoutingError("trusted GWay Remote node inventory unavailable") from exc
-    matches = [entry for entry in inventory["nodes"] if entry["node"] == node]
-    if len(matches) != 1:
-        raise RoutingError("node is not enrolled")
-    row = matches[0]
-    if not (row["registered"] is True
-            and row["identity_verified"] is True
-            and row["execute_eligible"] is True
-            and row["reachable"] == "reachable"):
-        raise RoutingError("node lacks verified execution eligibility/reachability")
 
 
 def set_route(node, *, lcd=True, sound=True, path=None, enrollment=check_enrollment):
@@ -160,12 +161,17 @@ def main(argv=None):
         elif args.operation == "status":
             result = read()
         else:
-            # Don't pretend connectivity is verified before the restricted
-            # receiver is implemented and admitted through GWay Remote.
-            raise RoutingError("remote event transport not yet enabled")
+            routes = read()
+            if routes["lcd"] is None and routes["sound"] is None:
+                raise RoutingError("no remote routes configured")
+            from route_send import execute
+            for device in ("lcd", "sound"):
+                if routes[device] is not None and execute(device, ["status"], route=routes):
+                    raise RoutingError("remote device test failed")
+            result = {"schema": SCHEMA, "lcd": routes["lcd"], "sound": routes["sound"], "tested": True}
     except (RoutingError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         parser.exit(1, f"route: {exc}\n")
-    result["transport"] = "not_enabled"
+    result["transport"] = "pinned_ssh" if result.get("lcd") or result.get("sound") else "local"
     print(json.dumps(result, sort_keys=True))
     return 0
 
