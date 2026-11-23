@@ -72,6 +72,31 @@ def event_for(device, args, node, *, origin=None, request_id=None, now=None):
             "device": device, "action": action, "arguments": arguments, "hops": 0}
 
 
+
+def _audit_receipt(phase, event, result=None):
+    """Opt-in, sanitized operator acceptance receipt; never prints credentials.
+
+    The submitting ID is emitted *before* transport so an ambiguous outcome
+    remains identifiable and MUST NOT be retried with a new physical event.
+    Ordinary stdout/stderr are unchanged unless explicitly opted in.
+    """
+    if os.environ.get("GWAY_LCD_SOUND_AUDIT_RECEIPTS") != "1":
+        return
+    record = {"schema": 1, "phase": phase, "source": event["origin"],
+              "node": event["node"], "device": event["device"],
+              "action": event["action"], "request_id": event["request_id"]}
+    if phase == "confirmed" and type(result) is dict:
+        for key, length in (("receiver_request_id", 32), ("source_event_sha256", 64)):
+            value = result.get(key)
+            if type(value) is str and re.fullmatch("[0-9a-f]{%s}" % length, value):
+                record[key] = value
+        record["status"] = "succeeded"
+        if type(result.get("duplicate")) is bool:
+            record["duplicate"] = result["duplicate"]
+    print("gway-lcd-sound-receipt " + json.dumps(record, sort_keys=True),
+          file=sys.stderr, flush=True)
+
+
 def execute(device, args, *, runner=subprocess.run, route=None, here=None):
     if os.environ.get("GWAY_LCD_SOUND_FORCE_LOCAL") == "1":
         target = None
@@ -96,6 +121,7 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
     source = source_config()
     payload = event_for(device, list(args), target,
                         origin=source["origin"] if source else None)
+    _audit_receipt("submitted", payload)
     if source is not None:
         result = source_dispatch(payload, config=source)
     else:
@@ -109,6 +135,7 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
             or result.get("request_id") != payload["request_id"]
             or result.get("status") != "succeeded"):
         raise RuntimeError("remote delivery unconfirmed")
+    _audit_receipt("confirmed", payload, result)
     if payload["action"] == "status":
         output = result.get("output")
         if type(output) is not str or len(output.encode("utf-8")) > 4096:
