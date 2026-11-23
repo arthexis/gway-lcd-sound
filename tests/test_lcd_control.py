@@ -7,8 +7,6 @@ import sys
 from datetime import datetime, timezone
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "scripts/gway/lcd_control.py"
-sys.path.insert(0, str(SCRIPT.parent))
-from lcd_engine.lockfiles import load_next_event
 
 
 def call(tmp_path, *args):
@@ -17,6 +15,9 @@ def call(tmp_path, *args):
 
 
 def test_show_status_clear(tmp_path):
+    sys.path.insert(0, str(SCRIPT.parent))
+    from lcd_engine.lockfiles import load_next_event
+
     assert call(tmp_path, "status").returncode == 0
     assert call(tmp_path, "show", "Hello", "World", "--seconds", "15").returncode == 0
     overlay = tmp_path / "locks" / "lcd-event-remote-overlay.lck"
