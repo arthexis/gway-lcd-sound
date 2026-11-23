@@ -4,6 +4,7 @@ import os
 import pathlib
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "scripts/gway/lcd_control.py"
 
@@ -14,10 +15,15 @@ def call(tmp_path, *args):
 
 
 def test_show_status_clear(tmp_path):
+    sys.path.insert(0, str(SCRIPT.parent))
+    from lcd_engine.lockfiles import load_next_event
+
     assert call(tmp_path, "status").returncode == 0
     assert call(tmp_path, "show", "Hello", "World", "--seconds", "15").returncode == 0
-    overlay = tmp_path / "locks" / "lcd-high-9000"
+    overlay = tmp_path / "locks" / "lcd-event-remote-overlay.lck"
     assert overlay.read_text().splitlines()[:2] == ["Hello", "World"]
+    event = load_next_event([overlay.parent], now=datetime.now(timezone.utc))
+    assert event is not None and event.lines == ("Hello", "World")
     assert json.loads(call(tmp_path, "status").stdout)["overlay"] is True
     assert call(tmp_path, "clear").returncode == 0
     assert not overlay.exists()
@@ -42,7 +48,7 @@ def test_rejects_symlink_overlay(tmp_path):
     root.mkdir()
     target = tmp_path / "other"
     target.write_text("safe")
-    (root / "lcd-high-9000").symlink_to(target)
+    (root / "lcd-event-remote-overlay.lck").symlink_to(target)
     assert call(tmp_path, "show", "hello").returncode != 0
     assert call(tmp_path, "clear").returncode != 0
     assert target.read_text() == "safe"

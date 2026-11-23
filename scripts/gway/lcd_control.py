@@ -18,7 +18,9 @@ def main(argv=None):
     sub.add_parser("clear")
     args = parser.parse_args(argv)
     root = Path(os.environ.get("GWAY_LCD_LOCK_DIR", str(Path.home() / ".local/state/lcd-lockfiles")))
-    path = root / "lcd-high-9000"
+    # Events preempt normal rotation even when lcd-channels.lck selects only
+    # the system-information script. A normal high channel may be disabled.
+    path = root / "lcd-event-remote-overlay.lck"
     if args.action == "status":
         print(json.dumps({"overlay": path.is_file() and not path.is_symlink(), "path": str(path)}))
         return 0
@@ -32,7 +34,7 @@ def main(argv=None):
         if root.is_symlink() or path.is_symlink():
             parser.error("unsafe LCD lockfile path")
         expires = (datetime.now(timezone.utc) + timedelta(seconds=args.seconds)).isoformat()
-        tmp = root / f".lcd-high-9000.{os.getpid()}.tmp"
+        tmp = root / f".lcd-event-remote-overlay.{os.getpid()}.tmp"
         try:
             with tmp.open("x", encoding="utf-8") as out:
                 out.write(f"{lines[0]}\n{lines[1]}\n{expires}\n")
