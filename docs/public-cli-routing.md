@@ -33,12 +33,36 @@ lcd show "Deploy" "Ready" --seconds 15
 lcd clear
 ```
 
-Additional local legacy sound flags (e.g. `--volume`, `--backend`,
-`--repeat`, `--pin`, `--device`) do **not** silently translate into
-remote privileges. They must be independently reviewed and allowlisted at
-the receiver before claiming full flag parity. Unsupported remote arguments
-fail closed. Likewise the Ethernet monitor, piano, local diagnostics and
-hardware-specific controls are not silently migrated.
+Advanced playback options are accepted through the **same public syntax**
+both before and after the sound name (and with `--event/--source`):
+`--volume` (finite 0..1), `--repeat` (integer 1..20 subject to an
+8-second bounded playback budget for built-in sounds), `--pause` (0..3),
+`--backend` (auto/gpio/audio), `--within` (0..3600), `--dry-run`
+(safe preview, result text returned), `--resolve` (event read-only resolution),
+`--motif` (bounded receiver-local name), `--pin` (ONLY the receiver's
+configured sound pin) and `--device` (ONLY receiver-configured sink, and
+only with `--backend audio`). `--sequence` supports safe playback modifiers
+and `--dry-run`, but is never repeated. The receiver independently validates
+all values; an authorized source does not inherit arbitrary GPIO, audio sink,
+or filesystem access. Unrecognized modifiers, overly long multi-repeat jobs,
+unsafe combinations, internal `--pattern-json`/`--event-db`, and hardware
+monitor/piano controls are explicitly denied for forwarded events. Such a
+refusal is **not** a remote retry or a local fallback.
+
+For example, all of the following preserve identical caller syntax on the
+three hosts:
+
+```sh
+sound --volume 0.30 notice --repeat 2 --pause 0.10
+sound notice --backend gpio --pin 18
+sound --event deploy-verified --source gway-remote --within 30
+sound notice --dry-run
+sound --sequence '{"format":"gway-piano-v1","notes":[[440,0.1,0]]}' --dry-run
+```
+
+The remote receiver executes each physical request at most once; `--repeat`
+is an explicitly approved repetition **within one request**, never an
+automatic network retry. Invalid or uncertain outcomes do not replay.
 
 ## Verified pre-rollout source inventory (2026-11-23)
 
