@@ -82,3 +82,27 @@ def test_local_advanced_argv_remains_unchanged(tmp_path):
                           route={"lcd": None, "sound": None}, here=tmp_path) == 0
     assert calls == [["bash", str(tmp_path / "sound.sh"), "notice",
                       "--volume", "0.45", "--backend", "gpio"]]
+
+@pytest.mark.parametrize(("source", "canonical"), [
+    (["--volume", "0.3", "notice", "--repeat", "2", "--pause", "0.1"],
+     ["play", "notice", "--volume", "0.3", "--repeat", "2", "--pause", "0.1"]),
+    (["--backend", "gpio", "--event", "deploy-verified", "--source", "gway-remote"],
+     ["event", "deploy-verified", "gway-remote", "--backend", "gpio"]),
+    (["--dry-run", "--sequence", '{"format":"gway-piano-v1","notes":[[440,0.1,0]]}'],
+     ["play", "--sequence", '{"format":"gway-piano-v1","notes":[[440,0.1,0]]}', "--dry-run"]),
+])
+def test_options_before_after_selection(source, canonical):
+    assert route_send.normalize_public_sound(source) == canonical
+
+
+@pytest.mark.parametrize("args", [
+    ["--volume", "nan", "notice"],
+    ["--event", "warn", "--source", "ci", "notice"],
+    ["--event", "warn", "--event", "bad", "--source", "ci"],
+    ["--source", "ci", "notice"],
+    ["notice", "ok"],
+    ["--pin", "18"],
+])
+def test_ambiguous_leading_option_syntax_denied(args):
+    with pytest.raises(ValueError):
+        route_send.normalize_public_sound(args)
