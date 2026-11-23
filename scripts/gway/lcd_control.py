@@ -26,6 +26,15 @@ def main(argv=None):
     if args.action == "status":
         print(json.dumps({"overlay": path.is_file() and not path.is_symlink(), "path": str(path)}))
         return 0
+    if args.action == "reports":
+        from lcd_engine.reports import parse_frames, store
+        try:
+            frames = parse_frames(args.frames_json)
+            store(root, frames)
+        except (ValueError, PermissionError, OSError) as exc:
+            parser.error(str(exc))
+        print(json.dumps({"action": "reports", "count": len(frames), "ok": True}))
+        return 0
     if args.action == "show":
         if not 1 <= args.seconds <= 300:
             parser.error("--seconds must be between 1 and 300")
