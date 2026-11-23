@@ -63,6 +63,52 @@ def _sound_options(raw):
     return a
 
 
+
+def normalize_public_sound(argv):
+    """Accept legacy argparse ordering without altering consumer syntax.
+
+    The only special path is the public shell shim, not a network command.
+    Options may precede/follow the sound selection. Reject ambiguity before
+    sending any physical request.
+    """
+    selection = []
+    options = []
+    named = {}
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token in ("--event", "--source", "--sequence"):
+            if token in named or i + 1 >= len(argv):
+                raise ValueError("duplicate or missing sound selection option")
+            named[token] = argv[i + 1]
+            i += 2
+        elif token in SOUND_SWITCHES:
+            options.append(token)
+            i += 1
+        elif token in SOUND_VALUES:
+            if i + 1 >= len(argv):
+                raise ValueError("missing sound option value")
+            options.extend(argv[i:i + 2])
+            i += 2
+        elif not token.startswith("-"):
+            selection.append(token)
+            i += 1
+        else:
+            raise ValueError("unknown sound option")
+    _sound_options(options)
+    if "--event" in named:
+        if selection or "--sequence" in named or "--source" not in named:
+            raise ValueError("ambiguous sound event")
+        return ["event", named["--event"], named["--source"], *options]
+    if "--sequence" in named:
+        if selection or "--source" in named:
+            raise ValueError("ambiguous sound sequence")
+        return ["play", "--sequence", named["--sequence"], *options]
+    if "--source" in named or len(selection) != 1:
+        raise ValueError("expected one named sound")
+    return ["play", selection[0], *options]
+
+
 def event_for(device, args, node, *, origin=None, request_id=None, now=None):
     if device not in ("lcd", "sound"):
         raise ValueError("invalid device")
@@ -207,6 +253,8 @@ def main(argv=None):
         print("route-send: expected lcd or sound", file=sys.stderr)
         return 64
     try:
+        if argv[0] == "sound" and len(argv) > 1 and argv[1] == "public":
+            return execute("sound", normalize_public_sound(argv[2:]))
         return execute(argv[0], argv[1:])
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, json.JSONDecodeError, subprocess.TimeoutExpired):
         print("route-send: output unavailable (no local fallback)", file=sys.stderr)
