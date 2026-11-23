@@ -112,3 +112,23 @@ per-account route using `gway-lcd-sound route local` and coordinate separate
 source-grant revocation; preserve the Watchtower ingress rollback documents.
 Do not remove a functioning credential until a verified alternative exists.
 Never roll back a receiver while an event outcome is uncertain.
+
+## Opt-in acceptance receipts
+
+An operator can set `GWAY_LCD_SOUND_AUDIT_RECEIPTS=1` in the **test
+session** (not in the consumer command arguments). This enables two
+structured `stderr` records, each prefixed `gway-lcd-sound-receipt`:
+`phase=submitted` records the client request ID before the network
+operation, and `phase=confirmed` records Watchtower's
+`receiver_request_id`, `source_event_sha256`, status and duplicate flag
+after verified success. No bearer, HTTP authorization header, SSH key,
+private file path or caller-controlled response extras are included.
+Absent the environment switch, normal stdout, stderr and exit semantics
+remain unchanged.
+
+A `submitted` record without `confirmed` is an **unknown outcome**;
+never issue another physical event to retry it. Correlate the receiver ID
+with the existing gway-001 private SQLite journal and the recorded
+Watchtower HTTPS response. The HTTPS receipt is Watchtower's acknowledgment,
+not an independently retained Watchtower server-side audit log or proof
+of human-observed output.
