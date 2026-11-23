@@ -49,6 +49,15 @@ commands=(
   gway-lcd-route:gway-lcd-route
 )
 manpages=(gway-lcd-sound.1)
+# Public names are opt-in-by-release, never overwrite another application's
+# existing sound/lcd. On rollback to an older release, remove only our links.
+public_commands=(sound:gway-sound-route lcd:gway-lcd-route)
+public_manifest=".transparent-public-cli-v1"
+managed_public() {
+  local cmd="$1" file="$2"
+  [[ -L "$bin_dir/$cmd" && "$(readlink "$bin_dir/$cmd")" == "$current/scripts/gway/$file" ]]
+}
+
 legacy_helpers=(
   gway-eth0-node-lcd-monitor
   gway-event-sound-hotplug
@@ -74,6 +83,19 @@ verify() {
       echo "Missing installed command: $cmd" >&2; return 1;
     }
   done
+  if [[ -f "$current/scripts/gway/$public_manifest" ]]; then
+    for pair in "${public_commands[@]}"; do
+      local cmd="${pair%%:*}" file="${pair#*:}"
+      if managed_public "$cmd" "$file"; then
+        [[ -x "$bin_dir/$cmd" ]] || { echo "Broken public command: $cmd" >&2; return 1; }
+      elif [[ -x "$bin_dir/$cmd" ]]; then
+        echo "Notice: external public command preserved: $bin_dir/$cmd" >&2
+      else
+        echo "Missing public command: $cmd" >&2
+        return 1
+      fi
+    done
+  fi
   for page in "${manpages[@]}"; do
     if [[ -f "$current/docs/man/man1/$page" ]]; then
       [[ -L "$man_dir/$page" && "$(readlink "$man_dir/$page")" == "$current/docs/man/man1/$page" ]] || {
@@ -118,6 +140,21 @@ activate() {
     link="$bin_dir/.$cmd.$$"
     ln -s "$current/scripts/gway/$file" "$link"
     mv -Tf "$link" "$bin_dir/$cmd" || { rm -f "$link" "$temp"; return 1; }
+  done
+  for pair in "${public_commands[@]}"; do
+    local cmd="${pair%%:*}" file="${pair#*:}" link
+    if [[ -f "$target/scripts/gway/$public_manifest" ]]; then
+      if [[ -e "$bin_dir/$cmd" || -L "$bin_dir/$cmd" ]] && ! managed_public "$cmd" "$file"; then
+        echo "Notice: preserving existing public command: $bin_dir/$cmd" >&2
+        continue
+      fi
+      link="$bin_dir/.$cmd.$"
+      ln -s "$current/scripts/gway/$file" "$link"
+      mv -Tf "$link" "$bin_dir/$cmd" || { rm -f "$link" "$temp"; return 1; }
+    elif managed_public "$cmd" "$file"; then
+      # Older releases did not own public aliases: restore the prior absence.
+      rm -- "$bin_dir/$cmd"
+    fi
   done
   for page in "${manpages[@]}"; do
     if [[ -f "$target/docs/man/man1/$page" ]]; then

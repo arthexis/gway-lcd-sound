@@ -14,8 +14,14 @@ if [[ "${1:-}" == "--sequence" ]]; then
   exec python3 "$script_dir/route_send.py" sound play --sequence "$@"
 fi
 case "${1:-}" in
+  play)
+    shift
+    [[ $# -ge 1 ]] || { echo "sound: expected NAME or --sequence JSON" >&2; exit 64; }
+    exec python3 "$script_dir/route_send.py" sound play "$@" ;;
   status|mute|unmute|toggle)
     exec python3 "$script_dir/route_send.py" sound "$@" ;;
+  --volume|--repeat|--pause|--backend|--device|--pin|--motif|--within|--dry-run|--resolve)
+    exec python3 "$script_dir/route_send.py" sound public "$@" ;;
   ""|--help|-h)
     exec bash "$script_dir/sound.sh" "$@" ;;
   *)

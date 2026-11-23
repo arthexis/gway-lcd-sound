@@ -61,8 +61,8 @@ case "$command" in
       play)
         shift
         if [[ "${1:-}" == "--sequence" ]]; then
-          [[ $# -eq 2 || ( $# -eq 3 && "${3:-}" == "--dry-run" ) ]] || { echo "sound: --sequence requires JSON and optional --dry-run" >&2; exit 64; }
-          exec python3 "$script_dir/route_send.py" sound play --sequence "$2" "${@:3}"
+          [[ $# -ge 2 ]] || { echo "sound: --sequence requires JSON" >&2; exit 64; }
+          exec python3 "$script_dir/route_send.py" sound play "$@"
         fi
         [[ $# -gt 0 ]] || { usage >&2; exit 64; }
         exec python3 "$script_dir/route_send.py" sound play "$@" ;;
