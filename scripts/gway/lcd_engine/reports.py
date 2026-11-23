@@ -98,9 +98,12 @@ def read_frames(lock_dirs, *, now=None):
             expiry = parse_datetime(raw["expires_at"])
             if expiry is None or not now < expiry <= now + timedelta(seconds=76):
                 continue
-            frames = _clean_frames(raw["frames"], now=now)
-            return [(frame, path) for frame in frames
-                    if "until" not in frame or parse_datetime(frame["until"]) > now]
+            # An expired completion must not suppress other still-live chargers.
+            live = [frame for frame in raw["frames"] if
+                    type(frame) is not dict or "until" not in frame or
+                    (parse_datetime(frame["until"]) or now) > now]
+            frames = _clean_frames(live, now=now)
+            return [(frame, path) for frame in frames]
         except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
             continue
     return []
