@@ -44,7 +44,7 @@ command="${1:-}"
 case "$command" in
   lcd)
     case "${2:-}" in
-      status|show|clear) shift; exec python3 "$script_dir/route_send.py" lcd "$@" ;;
+      status|show|clear|reports) shift; exec python3 "$script_dir/route_send.py" lcd "$@" ;;
       monitor) ;;
       *) usage >&2; exit 64 ;;
     esac
