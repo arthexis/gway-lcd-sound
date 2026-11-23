@@ -16,6 +16,8 @@ def main(argv=None):
     show.add_argument("line2", nargs="?", default="")
     show.add_argument("--seconds", type=int, default=30)
     sub.add_parser("clear")
+    reports = sub.add_parser("reports")
+    reports.add_argument("frames_json")
     args = parser.parse_args(argv)
     root = Path(os.environ.get("GWAY_LCD_LOCK_DIR", str(Path.home() / ".local/state/lcd-lockfiles")))
     # Events preempt normal rotation even when lcd-channels.lck selects only
