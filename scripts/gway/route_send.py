@@ -17,6 +17,52 @@ import sys
 import route_config
 
 
+
+# Public, opt-in playback options; never turn options into shell commands.
+SOUND_VALUES = {
+    "--volume": ("volume", float), "--repeat": ("repeat", int),
+    "--pause": ("pause", float), "--backend": ("backend", str),
+    "--device": ("device", str), "--pin": ("pin", int),
+    "--motif": ("motif", str), "--within": ("within", float),
+}
+SOUND_SWITCHES = {"--dry-run": "dry_run", "--resolve": "resolve"}
+
+
+def _sound_options(raw):
+    a = {}
+    i = 0
+    while i < len(raw):
+        arg = raw[i]
+        if arg in SOUND_SWITCHES:
+            name = SOUND_SWITCHES[arg]
+            if name in a:
+                raise ValueError("duplicate sound flag")
+            a[name] = True
+            i += 1
+        elif arg in SOUND_VALUES:
+            name, convert = SOUND_VALUES[arg]
+            if name in a or i + 1 >= len(raw):
+                raise ValueError("missing or duplicate sound option")
+            try:
+                a[name] = convert(raw[i + 1])
+            except (ValueError, OverflowError) as exc:
+                raise ValueError("invalid sound option") from exc
+            i += 2
+        else:
+            raise ValueError("unsupported sound option")
+    import math
+    if ("volume" in a and not (math.isfinite(a["volume"]) and 0 <= a["volume"] <= 1)
+        or "pause" in a and not (math.isfinite(a["pause"]) and 0 <= a["pause"] <= 3)
+        or "within" in a and not (math.isfinite(a["within"]) and 0 <= a["within"] <= 3600)
+        or "repeat" in a and not 1 <= a["repeat"] <= 20
+        or "backend" in a and a["backend"] not in ("auto", "gpio", "audio")
+        or "device" in a and (not re.fullmatch(r"[a-zA-Z0-9_.,:-]{1,64}", a["device"])
+                               or a.get("backend") != "audio")
+        or "motif" in a and not re.fullmatch(r"[a-zA-Z0-9_-]{1,32}", a["motif"])):
+        raise ValueError("unsupported sound option value")
+    return a
+
+
 def event_for(device, args, node, *, origin=None, request_id=None, now=None):
     if device not in ("lcd", "sound"):
         raise ValueError("invalid device")
@@ -46,26 +92,36 @@ def event_for(device, args, node, *, origin=None, request_id=None, now=None):
             raise ValueError("missing sound action")
         cmd = args[0]
         if cmd == "play":
-            if len(args) == 3 and args[1] == "--sequence":
+            if len(args) < 2:
+                raise ValueError("missing sound selection")
+            if args[1] == "--sequence":
+                if len(args) < 3:
+                    raise ValueError("missing sequence data")
                 action, arguments = "sequence", {"sequence": args[2]}
-            elif len(args) == 2:
-                action, arguments = "play", {"name": args[1]}
+                options = _sound_options(args[3:])
             else:
-                raise ValueError("unsupported remote sound play arguments")
+                action, arguments = "play", {"name": args[1]}
+                options = _sound_options(args[2:])
         elif cmd in ("mute", "unmute", "toggle", "status") and len(args) in (1, 2):
             if len(args) == 2 and (cmd != "status" or args[1] != "--json"):
                 raise ValueError("unexpected sound arguments")
             action, arguments = cmd, {}
+            options = {}
         elif cmd == "event":
-            if len(args) not in (3, 5):
+            if len(args) < 3:
                 raise ValueError("invalid sound event arguments")
             action, arguments = "event", {"event": args[1], "source": args[2]}
-            if len(args) == 5 and args[3] == "--within":
-                arguments["within"] = int(args[4])
-            elif len(args) == 5:
-                raise ValueError("invalid cooldown")
+            options = _sound_options(args[3:])
         else:
             raise ValueError("unsupported remote sound command")
+        if action in ("play", "event", "sequence"):
+            if ("motif" in options and action != "play"
+                or "resolve" in options and action != "event"
+                or action == "sequence" and
+                    any(k in options for k in ("within", "repeat", "motif", "resolve"))
+                or "dry_run" in options and "resolve" in options):
+                raise ValueError("unsupported combination of sound options")
+            arguments.update(options)
     return {"schema": 1, "node": node, "origin": origin,
             "request_id": request_id or secrets.token_hex(16),
             "expires_at": (now + timedelta(seconds=20)).isoformat(),
@@ -136,7 +192,8 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
             or result.get("status") != "succeeded"):
         raise RuntimeError("remote delivery unconfirmed")
     _audit_receipt("confirmed", payload, result)
-    if payload["action"] == "status":
+    if (payload["action"] == "status" or payload["arguments"].get("dry_run")
+            or payload["arguments"].get("resolve")):
         output = result.get("output")
         if type(output) is not str or len(output.encode("utf-8")) > 4096:
             raise RuntimeError("invalid remote status")
