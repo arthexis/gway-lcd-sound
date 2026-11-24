@@ -21,7 +21,7 @@ from .model import Payload
 SCHEMA = "gway-notification/v1"
 MAX_BYTES = 4096
 MAX_ACTIVE = 32
-MAX_PAGES = 8
+MAX_PAGES = 16
 PREFIX = "lcd-notice-"
 NODE = re.compile(r"(?:gway-[0-9]{3,}|ocpp-abb-1|gelectriic\.com)\Z")
 REPO = re.compile(r"[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,100}\Z")
