@@ -9,6 +9,9 @@ if [[ "${1:-}" == "--event" ]]; then
   shift 4
   exec python3 "$script_dir/route_send.py" sound event "$event" "$source" "$@"
 fi
+if [[ "${1:-}" == "--file" || "${1:-}" == --file=* ]]; then
+  exec python3 "$script_dir/route_send.py" sound play "$@"
+fi
 if [[ "${1:-}" == "--sequence" ]]; then
   shift
   exec python3 "$script_dir/route_send.py" sound play --sequence "$@"
@@ -20,7 +23,7 @@ case "${1:-}" in
     exec python3 "$script_dir/route_send.py" sound play "$@" ;;
   status|mute|unmute|toggle)
     exec python3 "$script_dir/route_send.py" sound "$@" ;;
-  --volume|--repeat|--pause|--backend|--device|--pin|--motif|--within|--dry-run|--resolve)
+  --volume|--repeat|--pause|--backend|--device|--pin|--motif|--within|--dry-run|--resolve|--track|--tempo)
     exec python3 "$script_dir/route_send.py" sound public "$@" ;;
   ""|--help|-h)
     exec bash "$script_dir/sound.sh" "$@" ;;

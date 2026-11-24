@@ -3,7 +3,7 @@ set -euo pipefail
 
 cleanup_gpio() {
   if command -v pinctrl >/dev/null 2>&1; then
-    pinctrl set "${NODE_SOUND_GPIO_PIN:-${GWAY_SOUND_GPIO_PIN:-18}}" ip pd >/dev/null 2>&1 || true
+    python3 -m sound_gpio_lock "${NODE_SOUND_GPIO_PIN:-${GWAY_SOUND_GPIO_PIN:-18}}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -12,7 +12,11 @@ export PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}"
 if [[ "${1:-}" == "status" ]]; then
   exec python3 -m sound_engine.mute "$@"
 fi
-trap cleanup_gpio EXIT
+file_mode=0
+for arg in "$@"; do
+  if [[ "$arg" == "--file" || "$arg" == --file=* ]]; then file_mode=1; break; fi
+done
+if [[ "$file_mode" == 0 ]]; then trap cleanup_gpio EXIT; fi
 
 if [[ "${1:-}" == "mute" || "${1:-}" == "unmute" || "${1:-}" == "toggle" ]]; then
   if [[ "${2:-}" == "--json" ]]; then
@@ -26,6 +30,8 @@ python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 from sound_engine import mute as sound_mute
 from sound_sequence import validate as validate_sequence, parse_sequence
+from sound_music import load_music, run_music_process
+from sound_gpio_lock import playback_lock, alert_playback, play_interruptible
 import json
 import sqlite3
 import fcntl
@@ -237,7 +243,7 @@ def sample_envelope(index, total):
     return 1.0
 
 
-def render_wave(path, pattern, volume):
+def render_wave(path, pattern, volume, cancelled=None):
     amplitude = int(32767 * clamp(volume * AUDIO_GAIN, 0.0, 1.0))
     with wave.open(path, "wb") as wav:
         wav.setnchannels(CHANNELS)
@@ -247,6 +253,8 @@ def render_wave(path, pattern, volume):
             tone_samples = max(1, int(SAMPLE_RATE * duration))
             frames = bytearray()
             for index in range(tone_samples):
+                if cancelled is not None and index % 2048 == 0 and cancelled():
+                    return False
                 envelope = sample_envelope(index, tone_samples)
                 sample = int(amplitude * envelope * math.sin(2 * math.pi * frequency * index / SAMPLE_RATE)) if frequency > 0 else 0
                 frames.extend(struct.pack("<h", sample) * CHANNELS)
@@ -254,6 +262,7 @@ def render_wave(path, pattern, volume):
             pause_samples = int(SAMPLE_RATE * pause)
             if pause_samples > 0:
                 wav.writeframes(b"\x00\x00" * CHANNELS * pause_samples)
+    return True
 
 
 def audio_commands(path, device):
@@ -408,8 +417,11 @@ def play_pattern(name, *, pin, volume, backend, device, dry_run=False):
         except Exception as exc:
             log_backend(f"sound={name} backend=audio failed={exc!r}")
             raise
-    mark_noise_alarm_suppressed(name, backend, pattern)
-    play_gpio_pattern(name, pin=pin, volume=volume)
+    with alert_playback():
+        if playback_muted():
+            return
+        mark_noise_alarm_suppressed(name, backend, pattern)
+        play_gpio_pattern(name, pin=pin, volume=volume)
     log_backend(f"sound={name} backend=gpio pin={pin} cwd={os.getcwd()} ok")
 
 
@@ -739,6 +751,9 @@ def build_parser():
         help="sound name, list, all, or test",
     )
     parser.add_argument("--pattern-json", help="Internal: preview a validated JSON pattern without saving")
+    parser.add_argument("--file", help="Local MIDI or RTTTL music file")
+    parser.add_argument("--track", type=int, help="Zero-based MIDI track (GPIO only)")
+    parser.add_argument("--tempo", type=float, help="Playback speed multiplier (0.25-4)")
     parser.add_argument("--sequence", help="One-shot gway-piano-v1 JSON composition; never persisted")
     parser.add_argument("--motif", help="Explicit motif to play before a sound; bypasses event cooldown")
     parser.add_argument("--list-motifs", action="store_true", help="Print installed motif names as JSON")
@@ -757,11 +772,104 @@ def build_parser():
     return parser
 
 
+def play_music_gpio(music, args):
+    # Hardware discovery happens before taking any playback lock.
+    wait_for_gpio_ready(GPIO_WAIT_SECONDS)
+    GPIO = load_gpio()
+    next_suppression = 0.0
+
+    def play_slice(frequency, duration):
+        nonlocal next_suppression
+        if frequency > 0 and time.monotonic() >= next_suppression:
+            mark_noise_alarm_suppressed("music", "gpio", ((frequency, duration, 0),))
+            next_suppression = time.monotonic() + 1
+        try:
+            configure_gpio(GPIO, args.pin)
+            play_tone(GPIO, args.pin, frequency, duration, args.volume)
+        finally:
+            reset_gpio(GPIO, args.pin)
+
+    completed = play_interruptible(music.pattern, play_slice, playback_muted)
+    log_backend(f"sound=music backend=gpio {'ok' if completed else 'stopped=muted'}")
+
+
+def play_music_audio(music, args):
+    """Use a validated private snapshot; never pass arbitrary user paths to a player."""
+    with tempfile.TemporaryDirectory(prefix="gway-music-") as directory:
+        wav_path = os.path.join(directory, "music.wav")
+        if music.kind == "midi":
+            synth = shutil.which("fluidsynth")
+            bank = os.environ.get("GWAY_SOUND_SOUNDFONT", "/usr/share/sounds/sf2/default-GM.sf2")
+            if not synth or not os.path.isfile(bank):
+                raise RuntimeError("MIDI audio requires FluidSynth and a General MIDI SoundFont (GWAY_SOUND_SOUNDFONT)")
+            midi_path = os.path.join(directory, "music.mid")
+            with open(midi_path, "wb") as handle:
+                handle.write(music.midi_bytes)
+            status = run_music_process([synth, "-ni", "-F", wav_path, "-r", "44100", "-g",
+                                        str(args.volume), bank, midi_path],
+                                       playback_muted, 90, output_path=wav_path)
+            if status is None:
+                log_backend("sound=music backend=audio stopped=muted")
+                return
+            if status:
+                raise RuntimeError(f"FluidSynth rendering failed (exit {status})")
+        elif not render_wave(wav_path, music.pattern, args.volume, playback_muted):
+            log_backend("sound=music backend=audio stopped=muted")
+            return
+        if playback_muted():
+            return
+        with wave.open(wav_path, "rb") as rendered:
+            actual_seconds = rendered.getnframes() / rendered.getframerate()
+        if actual_seconds > music.seconds + 30 or os.path.getsize(wav_path) > 80 * 1024 * 1024:
+            raise RuntimeError("rendered music exceeds duration or size limit")
+        for backend_name, command in audio_commands(wav_path, args.device):
+            status = run_music_process(command, playback_muted, actual_seconds + 10,
+                                       env=audio_env())
+            if status is None:
+                log_backend("sound=music backend=audio stopped=muted")
+                return
+            if status == 0:
+                log_backend(f"sound=music backend={backend_name} ok")
+                return
+        raise RuntimeError("no audio player succeeded")
+
+
+def music_main(parser, args):
+    if (args.sequence is not None or args.pattern_json or args.event or args.motif
+            or args.source or args.resolve or args.list_motifs or args.within is not None
+            or args.sound != "list" or args.repeat != 1):
+        parser.error("--file cannot be combined with other sound selection, cooldown or repeat")
+    backend = "gpio" if args.backend == "auto" else args.backend
+    try:
+        music = load_music(args.file, args.track, 1.0 if args.tempo is None else args.tempo)
+        if backend == "audio" and music.kind == "midi" and (args.track is not None or args.tempo not in (None, 1.0)):
+            raise ValueError("MIDI audio requires full file at original tempo")
+        if not math.isfinite(args.volume):
+            raise ValueError("invalid volume")
+        if args.dry_run:
+            print(json.dumps({"format": music.kind, "backend": backend, "track": args.track,
+                              "tracks": music.tracks, "seconds": round(music.seconds, 3),
+                              "steps": len(music.pattern)}, sort_keys=True))
+            return 0
+        if playback_muted() or args.volume <= 0:
+            return 0
+        with playback_lock("music-playback", timeout=0):
+            if backend == "audio":
+                play_music_audio(music, args)
+            else:
+                play_music_gpio(music, args)
+        return 0
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, wave.Error, EOFError) as exc:
+        parser.error(str(exc))
+
+
 def main(argv):
     if argv and argv[0] in ("status", "mute", "unmute", "toggle"):
         return sound_mute.main(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.file is not None and not math.isfinite(args.volume):
+        parser.error("invalid volume")
     args.volume = clamp(args.volume, 0.0, 1.0)
     if not math.isfinite(args.pause) or not 0 <= args.pause <= 3:
         parser.error("--pause must be between 0 and 3 seconds")
@@ -772,6 +880,10 @@ def main(argv):
     if args.within is not None and (args.sequence is not None or args.pattern_json or args.list_motifs or args.resolve):
         parser.error("--within requires a named sound or event playback")
     args.backend = (args.backend or "auto").strip().lower()
+    if args.file is not None:
+        return music_main(parser, args)
+    if args.track is not None or args.tempo is not None:
+        parser.error("--track and --tempo require --file")
     if args.sequence is not None:
         if args.pattern_json or args.event or args.motif or args.resolve or args.source or args.sound != "list":
             parser.error("--sequence cannot be combined with other sound selection")
@@ -908,6 +1020,6 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 PY
 status=$?
-cleanup_gpio
+if [[ "$file_mode" == 0 ]]; then cleanup_gpio; fi
 trap - EXIT
 exit "$status"

@@ -71,6 +71,8 @@ def normalize_public_sound(argv):
     Options may precede/follow the sound selection. Reject ambiguity before
     sending any physical request.
     """
+    if "--file" in argv or any(token.startswith("--file=") for token in argv):
+        return ["play", *argv]
     selection = []
     options = []
     named = {}
@@ -150,6 +152,8 @@ def event_for(device, args, node, *, origin=None, request_id=None, now=None):
         if cmd == "play":
             if len(args) < 2:
                 raise ValueError("missing sound selection")
+            if any(token == "--file" or token.startswith("--file=") for token in args[1:]):
+                raise ValueError("file playback is local-only")
             if args[1] == "--sequence":
                 if len(args) < 3:
                     raise ValueError("missing sequence data")
@@ -215,6 +219,10 @@ def execute(device, args, *, runner=subprocess.run, route=None, here=None):
     else:
         routes = route if route is not None else route_config.read()
         target = routes[device]
+    if device == "sound" and args and args[0] == "play" and any(
+            token == "--file" or token.startswith("--file=") for token in args[1:]):
+        if target is not None:
+            raise ValueError("file playback is local-only; remote routes do not accept file paths")
     here = Path(here or Path(__file__).resolve().parent)
     if target is None:
         if device == "lcd":
