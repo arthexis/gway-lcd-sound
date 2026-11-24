@@ -92,7 +92,7 @@ def process_changes(previous: dict[str, Any], current: dict[str, Any], runtime: 
     old_display = previous.get("lcd_display") or {}
     new_display = current.get("lcd_display") or {}
     if (
-        new_display.get("source") not in {None, "", "normal"}
+        new_display.get("source") not in {None, "", "normal", "reports"}
         and (
             old_display.get("source") != new_display.get("source")
             or old_display.get("origin") != new_display.get("origin")
