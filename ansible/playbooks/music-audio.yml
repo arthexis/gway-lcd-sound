@@ -1,0 +1,39 @@
+---
+- name: Provision optional local General MIDI audio synthesis
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Require deliberate package provisioning on Debian-family Linux
+      ansible.builtin.assert:
+        that:
+          - ansible_os_family == "Debian"
+          - gway_music_audio_install | default(false) | bool
+        fail_msg: "Explicitly pass -e gway_music_audio_install=true on a Debian-family node."
+
+    - name: Install FluidSynth and a compact General MIDI sound bank
+      become: true
+      ansible.builtin.apt:
+        name:
+          - fluidsynth
+          - timgm6mb-soundfont
+        state: present
+        install_recommends: false
+        policy_rc_d: 101
+        update_cache: false
+
+    - name: Verify FluidSynth executable
+      ansible.builtin.command:
+        argv: [fluidsynth, --version]
+      changed_when: false
+
+    - name: Verify default MIDI sound bank
+      ansible.builtin.stat:
+        path: /usr/share/sounds/sf2/default-GM.sf2
+        follow: true
+      register: gway_music_soundfont
+
+    - name: Require readable default bank
+      ansible.builtin.assert:
+        that:
+          - gway_music_soundfont.stat.isreg | default(false)
+          - gway_music_soundfont.stat.readable | default(false)
