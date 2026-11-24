@@ -31,7 +31,7 @@ import argparse
 from sound_engine import mute as sound_mute
 from sound_sequence import validate as validate_sequence, parse_sequence
 from sound_music import load_music
-from sound_gpio_lock import playback_lock
+from sound_gpio_lock import playback_lock, alert_playback, play_interruptible
 import json
 import sqlite3
 import fcntl
@@ -414,7 +414,7 @@ def play_pattern(name, *, pin, volume, backend, device, dry_run=False):
         except Exception as exc:
             log_backend(f"sound={name} backend=audio failed={exc!r}")
             raise
-    with playback_lock():
+    with alert_playback():
         if playback_muted():
             return
         mark_noise_alarm_suppressed(name, backend, pattern)
@@ -769,6 +769,27 @@ def build_parser():
     return parser
 
 
+def play_music_gpio(music, args):
+    # Hardware discovery happens before taking any playback lock.
+    wait_for_gpio_ready(GPIO_WAIT_SECONDS)
+    GPIO = load_gpio()
+    next_suppression = 0.0
+
+    def play_slice(frequency, duration):
+        nonlocal next_suppression
+        if frequency > 0 and time.monotonic() >= next_suppression:
+            mark_noise_alarm_suppressed("music", "gpio", ((frequency, duration, 0),))
+            next_suppression = time.monotonic() + 1
+        try:
+            configure_gpio(GPIO, args.pin)
+            play_tone(GPIO, args.pin, frequency, duration, args.volume)
+        finally:
+            reset_gpio(GPIO, args.pin)
+
+    completed = play_interruptible(music.pattern, play_slice, playback_muted)
+    log_backend(f"sound=music backend=gpio {'ok' if completed else 'stopped=muted'}")
+
+
 def play_music_audio(music, args):
     """Use a validated private snapshot; never pass arbitrary user paths to a player."""
     with tempfile.TemporaryDirectory(prefix="gway-music-") as directory:
@@ -807,8 +828,6 @@ def music_main(parser, args):
         music = load_music(args.file, args.track, 1.0 if args.tempo is None else args.tempo)
         if backend == "audio" and music.kind == "midi" and (args.track is not None or args.tempo not in (None, 1.0)):
             raise ValueError("MIDI audio requires full file at original tempo")
-        if backend == "gpio" and music.seconds > 5:
-            raise ValueError("GPIO music is limited to 5 seconds to protect notifications; use --backend audio")
         if not math.isfinite(args.volume):
             raise ValueError("invalid volume")
         if args.dry_run:
@@ -822,7 +841,7 @@ def music_main(parser, args):
             if backend == "audio":
                 play_music_audio(music, args)
             else:
-                play_custom("music", music.pattern, args)
+                play_music_gpio(music, args)
         return 0
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         parser.error(str(exc))
