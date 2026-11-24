@@ -18,6 +18,8 @@ def main(argv=None):
     sub.add_parser("clear")
     reports = sub.add_parser("reports")
     reports.add_argument("frames_json")
+    notice = sub.add_parser("notice")
+    notice.add_argument("payload_json")
     args = parser.parse_args(argv)
     root = Path(os.environ.get("GWAY_LCD_LOCK_DIR", str(Path.home() / ".local/state/lcd-lockfiles")))
     # Events preempt normal rotation even when lcd-channels.lck selects only
@@ -25,6 +27,15 @@ def main(argv=None):
     path = root / "lcd-event-remote-overlay.lck"
     if args.action == "status":
         print(json.dumps({"overlay": path.is_file() and not path.is_symlink(), "path": str(path)}))
+        return 0
+    if args.action == "notice":
+        from lcd_engine.notifications import parse_notice, store_notice
+        try:
+            notice = parse_notice(args.payload_json)
+            store_notice(root, notice)
+        except (ValueError, PermissionError, OSError) as exc:
+            parser.error(str(exc))
+        print(json.dumps({"action": "notice", "ok": True}))
         return 0
     if args.action == "reports":
         from lcd_engine.reports import parse_frames, store
