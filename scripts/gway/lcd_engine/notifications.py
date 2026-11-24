@@ -40,7 +40,7 @@ STATES = {
                "rollback-verified": "important", "rollback-failed": "critical"},
 }
 LABELS = {
-    "finished": "DONE", "codex_failed": "FAILED", "interrupted": "BLOCKED",
+    "finished": "ENDED", "codex_failed": "FAILED", "interrupted": "BLOCKED",
     "down": "DOWN", "unreachable": "UNREACHABLE", "degraded": "DEGRADED",
     "recovered": "RECOVERED", "deploy-started": "STARTED",
     "deploy-activated": "ACTIVATED", "deploy-skipped": "SKIPPED",
