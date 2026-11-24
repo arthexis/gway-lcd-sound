@@ -30,7 +30,7 @@ python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 from sound_engine import mute as sound_mute
 from sound_sequence import validate as validate_sequence, parse_sequence
-from sound_music import load_music
+from sound_music import load_music, run_music_process
 from sound_gpio_lock import playback_lock, alert_playback, play_interruptible
 import json
 import sqlite3
@@ -243,7 +243,7 @@ def sample_envelope(index, total):
     return 1.0
 
 
-def render_wave(path, pattern, volume):
+def render_wave(path, pattern, volume, cancelled=None):
     amplitude = int(32767 * clamp(volume * AUDIO_GAIN, 0.0, 1.0))
     with wave.open(path, "wb") as wav:
         wav.setnchannels(CHANNELS)
@@ -253,6 +253,8 @@ def render_wave(path, pattern, volume):
             tone_samples = max(1, int(SAMPLE_RATE * duration))
             frames = bytearray()
             for index in range(tone_samples):
+                if cancelled is not None and index % 2048 == 0 and cancelled():
+                    return False
                 envelope = sample_envelope(index, tone_samples)
                 sample = int(amplitude * envelope * math.sin(2 * math.pi * frequency * index / SAMPLE_RATE)) if frequency > 0 else 0
                 frames.extend(struct.pack("<h", sample) * CHANNELS)
@@ -260,6 +262,7 @@ def render_wave(path, pattern, volume):
             pause_samples = int(SAMPLE_RATE * pause)
             if pause_samples > 0:
                 wav.writeframes(b"\x00\x00" * CHANNELS * pause_samples)
+    return True
 
 
 def audio_commands(path, device):
@@ -802,17 +805,30 @@ def play_music_audio(music, args):
             midi_path = os.path.join(directory, "music.mid")
             with open(midi_path, "wb") as handle:
                 handle.write(music.midi_bytes)
-            subprocess.run([synth, "-ni", "-F", wav_path, "-r", "44100", "-g",
-                            str(args.volume), bank, midi_path],
-                           check=True, capture_output=True, timeout=90)
-        else:
-            render_wave(wav_path, music.pattern, args.volume)
+            status = run_music_process([synth, "-ni", "-F", wav_path, "-r", "44100", "-g",
+                                        str(args.volume), bank, midi_path],
+                                       playback_muted, 90, output_path=wav_path)
+            if status is None:
+                log_backend("sound=music backend=audio stopped=muted")
+                return
+            if status:
+                raise RuntimeError(f"FluidSynth rendering failed (exit {status})")
+        elif not render_wave(wav_path, music.pattern, args.volume, playback_muted):
+            log_backend("sound=music backend=audio stopped=muted")
+            return
         if playback_muted():
             return
+        with wave.open(wav_path, "rb") as rendered:
+            actual_seconds = rendered.getnframes() / rendered.getframerate()
+        if actual_seconds > music.seconds + 30 or os.path.getsize(wav_path) > 80 * 1024 * 1024:
+            raise RuntimeError("rendered music exceeds duration or size limit")
         for backend_name, command in audio_commands(wav_path, args.device):
-            result = subprocess.run(command, capture_output=True, env=audio_env(),
-                                    timeout=music.seconds + 30, check=False)
-            if result.returncode == 0:
+            status = run_music_process(command, playback_muted, actual_seconds + 10,
+                                       env=audio_env())
+            if status is None:
+                log_backend("sound=music backend=audio stopped=muted")
+                return
+            if status == 0:
                 log_backend(f"sound=music backend={backend_name} ok")
                 return
         raise RuntimeError("no audio player succeeded")
@@ -843,7 +859,7 @@ def music_main(parser, args):
             else:
                 play_music_gpio(music, args)
         return 0
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, wave.Error, EOFError) as exc:
         parser.error(str(exc))
 
 
