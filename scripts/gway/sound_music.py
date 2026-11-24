@@ -5,7 +5,7 @@ import re
 import stat
 import struct
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 MAX_BYTES = 1024 * 1024
@@ -20,6 +20,7 @@ class Music:
     pattern: tuple
     seconds: float
     tracks: int = 1
+    midi_bytes: bytes = field(default=b"", repr=False)
 
 
 def _tempo(value):
@@ -172,6 +173,7 @@ def parse_midi(data, track=None, tempo=1.0):
     end = max(end_ticks) if track is None else end_ticks[track]
     events.sort()
     active = defaultdict(int)
+    pitch_counts = [0] * 128
     pattern = []
     prev, rate, elapsed = 0, 500000, 0.0
     def advance(tick):
@@ -181,7 +183,7 @@ def parse_midi(data, track=None, tempo=1.0):
         if elapsed > MAX_SECONDS:
             raise ValueError("music exceeds duration limit")
         if duration > 0:
-            highest = max((key[2] for key, n in active.items() if n), default=None)
+            highest = next((pitch for pitch in range(127, -1, -1) if pitch_counts[pitch]), None)
             freq = 0 if highest is None else _hz(highest)
             if pattern and pattern[-1][0] == freq:
                 pattern[-1] = (freq, pattern[-1][1] + duration, 0)
@@ -198,10 +200,15 @@ def parse_midi(data, track=None, tempo=1.0):
             key = (index, a, b)
             if kind == "on":
                 active[key] += 1
+                pitch_counts[b] += 1
             elif active.get(key):
                 active[key] -= 1
+                pitch_counts[b] -= 1
+                if not active[key]:
+                    del active[key]
     advance(end)
-    return _finish("midi", pattern, count)
+    result = _finish("midi", pattern, count)
+    return Music(result.kind, result.pattern, result.seconds, result.tracks, data)
 
 
 def load_music(path, track=None, tempo=1.0):
