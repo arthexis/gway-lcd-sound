@@ -10,9 +10,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1] / "scripts" / "gway"
 sys.path.insert(0, str(ROOT))
-from sound_music import load_music, parse_midi, parse_rtttl
-from sound_gpio_lock import playback_lock
-import route_send
+from sound_music import load_music, parse_midi, parse_rtttl  # noqa: E402
+from sound_gpio_lock import playback_lock  # noqa: E402
+import route_send  # noqa: E402
 
 
 def smf(*tracks, division=96, fmt=None):
