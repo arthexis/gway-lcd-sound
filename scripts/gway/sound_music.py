@@ -4,6 +4,8 @@ import os
 import re
 import stat
 import struct
+import subprocess
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -228,3 +230,40 @@ def load_music(path, track=None, tempo=1.0):
             raise ValueError("--track requires MIDI")
         return parse_rtttl(data, tempo)
     return parse_midi(data, track, tempo)
+
+
+
+def run_music_process(command, muted, timeout, *, env=None, output_path=None):
+    """Bound external render/playback and stop promptly on mute.
+
+    Return None for a muted/cancelled operation, otherwise the process exit
+    code. The PCM cap leaves room for the synthesizer's release tail.
+    """
+    if muted():
+        return None
+    with subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as child:
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                if muted():
+                    return None
+                if output_path is not None:
+                    try:
+                        if os.stat(output_path).st_size > 80 * 1024 * 1024:
+                            raise RuntimeError("rendered MIDI exceeds PCM size limit")
+                    except FileNotFoundError:
+                        pass
+                if child.poll() is not None:
+                    return child.returncode
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(command[0], timeout)
+                time.sleep(.05)
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
