@@ -119,7 +119,7 @@ def event_for(device, args, node, *, origin=None, request_id=None, now=None):
         raise ValueError("self routing prohibited")
     now = now or datetime.now(timezone.utc)
     if device == "lcd":
-        if not args or args[0] not in ("show", "clear", "status", "reports"):
+        if not args or args[0] not in ("show", "clear", "status", "reports", "notice"):
             raise ValueError("unsupported remote LCD command")
         action = args[0]
         if action == "show":
@@ -134,6 +134,11 @@ def event_for(device, args, node, *, origin=None, request_id=None, now=None):
                 raise ValueError("invalid reports arguments")
             from lcd_engine.reports import parse_frames
             arguments = {"frames": parse_frames(args[1], now=now)}
+        elif action == "notice":
+            if len(args) != 2:
+                raise ValueError("invalid notification arguments")
+            from lcd_engine.notifications import parse_notice
+            arguments = {"notice": parse_notice(args[1])}
         else:
             if len(args) != 1:
                 raise ValueError("unexpected LCD arguments")
