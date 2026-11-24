@@ -285,3 +285,23 @@ Codex MCP tool hooks may use `sound --event tool-started --source mcp --within 2
 and `tool-finished` for a distinct MCP motif and start/finish cues. Hooks must
 be configured and trusted in Codex; other MCP clients do not use Codex hooks.
 A finish cue means the tool returned, not that it succeeded.
+
+## Local music files (MIDI and RTTTL)
+
+```sh
+sound --file alert.rtttl --dry-run
+sound --file alert.rtttl
+sound --file theme.mid --track 0 --tempo 1.25 --dry-run
+sound --file theme.mid --backend audio
+gway-lcd-sound sound play --file theme.rtttl --backend audio
+```
+
+File playback is local-only: configured remote sound routes reject file paths instead of forwarding or falling back. Use `gway-lcd-sound route local` only if intentionally changing the configured route; execute on the physical node for music. The existing named cues and event vocabulary remain available. Dry-run validates and prints a JSON summary without playing or creating playback state. Mute is respected.
+
+- RTTTL accepts `name:defaults:notes`, dotted notes, sharps, octave 4–7 and pauses. Example: `Alert:d=8,o=5,b=140:c,e,g,4c6,p,g,e,c`.
+- MIDI accepts Standard MIDI Files type 0 and 1 (`.mid` / `.midi`) with PPQN timing. GPIO selects the highest active melodic note, excludes channel 10 percussion, honors tempo changes, note-offs and rests; `--track` is a zero-based index. `--tempo` is a multiplier (0.25–4). Controllers, pitch bends, sustain and instrument timbres are not reproduced on GPIO.
+- GPIO file playback is limited to 5 seconds for this initial release, with shared per-user GPIO serialization and bounded lock acquisition. Longer files require `--backend audio`. This avoids holding the GPIO output for an entire song; it does not provide priority preemption.
+- Audio RTTTL uses existing PCM rendering. MIDI audio requires the optional `fluidsynth` executable and a General MIDI SoundFont (default `/usr/share/sounds/sf2/default-GM.sf2`, override `GWAY_SOUND_SOUNDFONT`). It renders the full arrangement, at original tempo only; `--track` and non-unit `--tempo` are rejected for MIDI audio. No automatic package installation, audio device changes, or silent fallback.
+- Input is restricted to regular files at most 1 MiB, 64 MIDI tracks, 20,000 events and 300 seconds; file playback is one-shot (no repeat, event, motif or cooldown). Remote MCP contract is unchanged.
+
+Physical GPIO and speaker acceptance remains a separate controlled field test.
