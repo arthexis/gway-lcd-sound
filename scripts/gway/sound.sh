@@ -26,6 +26,7 @@ python3 /dev/fd/3 "$@" 3<<'PY'
 import argparse
 from sound_engine import mute as sound_mute
 from sound_sequence import validate as validate_sequence, parse_sequence
+from sound_music import load_music
 import json
 import sqlite3
 import fcntl
@@ -739,6 +740,9 @@ def build_parser():
         help="sound name, list, all, or test",
     )
     parser.add_argument("--pattern-json", help="Internal: preview a validated JSON pattern without saving")
+    parser.add_argument("--file", help="Local MIDI or RTTTL music file")
+    parser.add_argument("--track", type=int, help="Zero-based MIDI track (GPIO only)")
+    parser.add_argument("--tempo", type=float, help="Playback speed multiplier (0.25-4)")
     parser.add_argument("--sequence", help="One-shot gway-piano-v1 JSON composition; never persisted")
     parser.add_argument("--motif", help="Explicit motif to play before a sound; bypasses event cooldown")
     parser.add_argument("--list-motifs", action="store_true", help="Print installed motif names as JSON")
@@ -757,11 +761,71 @@ def build_parser():
     return parser
 
 
+def play_music_audio(music, args):
+    """Use a validated private snapshot; never pass arbitrary user paths to a player."""
+    with tempfile.TemporaryDirectory(prefix="gway-music-") as directory:
+        wav_path = os.path.join(directory, "music.wav")
+        if music.kind == "midi":
+            synth = shutil.which("fluidsynth")
+            bank = os.environ.get("GWAY_SOUND_SOUNDFONT", "/usr/share/sounds/sf2/default-GM.sf2")
+            if not synth or not os.path.isfile(bank):
+                raise RuntimeError("MIDI audio requires FluidSynth and a General MIDI SoundFont (GWAY_SOUND_SOUNDFONT)")
+            midi_path = os.path.join(directory, "music.mid")
+            with open(midi_path, "wb") as handle:
+                handle.write(music.midi_bytes)
+            subprocess.run([synth, "-ni", "-F", wav_path, "-r", "44100", "-g",
+                            str(args.volume), bank, midi_path],
+                           check=True, capture_output=True, timeout=90)
+        else:
+            render_wave(wav_path, music.pattern, args.volume)
+        if playback_muted():
+            return
+        for backend_name, command in audio_commands(wav_path, args.device):
+            result = subprocess.run(command, capture_output=True, env=audio_env(),
+                                    timeout=music.seconds + 30, check=False)
+            if result.returncode == 0:
+                log_backend(f"sound=music backend={backend_name} ok")
+                return
+        raise RuntimeError("no audio player succeeded")
+
+
+def music_main(parser, args):
+    if (args.sequence is not None or args.pattern_json or args.event or args.motif
+            or args.source or args.resolve or args.list_motifs or args.within is not None
+            or args.sound != "list" or args.repeat != 1):
+        parser.error("--file cannot be combined with other sound selection, cooldown or repeat")
+    backend = "gpio" if args.backend == "auto" else args.backend
+    try:
+        music = load_music(args.file, args.track, 1.0 if args.tempo is None else args.tempo)
+        if backend == "audio" and music.kind == "midi" and (args.track is not None or args.tempo not in (None, 1.0)):
+            raise ValueError("MIDI audio requires full file at original tempo")
+        if backend == "gpio" and music.seconds > 5:
+            raise ValueError("GPIO music is limited to 5 seconds to protect notifications; use --backend audio")
+        if not math.isfinite(args.volume):
+            raise ValueError("invalid volume")
+        if args.dry_run:
+            print(json.dumps({"format": music.kind, "backend": backend, "track": args.track,
+                              "tracks": music.tracks, "seconds": round(music.seconds, 3),
+                              "steps": len(music.pattern)}, sort_keys=True))
+            return 0
+        if playback_muted() or args.volume <= 0:
+            return 0
+        if backend == "audio":
+            play_music_audio(music, args)
+        else:
+            play_custom("music", music.pattern, args)
+        return 0
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        parser.error(str(exc))
+
+
 def main(argv):
     if argv and argv[0] in ("status", "mute", "unmute", "toggle"):
         return sound_mute.main(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.file is not None and not math.isfinite(args.volume):
+        parser.error("invalid volume")
     args.volume = clamp(args.volume, 0.0, 1.0)
     if not math.isfinite(args.pause) or not 0 <= args.pause <= 3:
         parser.error("--pause must be between 0 and 3 seconds")
@@ -772,6 +836,10 @@ def main(argv):
     if args.within is not None and (args.sequence is not None or args.pattern_json or args.list_motifs or args.resolve):
         parser.error("--within requires a named sound or event playback")
     args.backend = (args.backend or "auto").strip().lower()
+    if args.file is not None:
+        return music_main(parser, args)
+    if args.track is not None or args.tempo is not None:
+        parser.error("--track and --tempo require --file")
     if args.sequence is not None:
         if args.pattern_json or args.event or args.motif or args.resolve or args.source or args.sound != "list":
             parser.error("--sequence cannot be combined with other sound selection")
