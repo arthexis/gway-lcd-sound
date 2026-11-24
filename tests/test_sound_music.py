@@ -10,7 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1] / "scripts" / "gway"
 sys.path.insert(0, str(ROOT))
-from sound_music import load_music, parse_midi, parse_rtttl  # noqa: E402
+from sound_music import load_music, parse_midi, parse_rtttl, run_music_process  # noqa: E402
 from sound_gpio_lock import (playback_lock, alert_playback, play_interruptible, music_slice)  # noqa: E402
 import route_send  # noqa: E402
 
@@ -207,3 +207,34 @@ def test_music_releases_locks_on_exception(tmp_path, monkeypatch):
         play_interruptible([(440, 1, 0)], fail, lambda: False)
     with alert_playback():
         pass
+
+
+
+def test_audio_process_exit_and_mute(tmp_path):
+    import time
+    pid_file = tmp_path / "pid"
+    code = "import os,time,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(20)"
+    start = time.monotonic()
+    assert run_music_process([sys.executable, "-c", code, str(pid_file)],
+                             lambda: pid_file.exists(), 4) is None
+    assert time.monotonic() - start < 4
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+    assert run_music_process([sys.executable, "-c", "raise SystemExit(7)"],
+                             lambda: False, 3) == 7
+
+
+def test_audio_process_timeout():
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_music_process([sys.executable, "-c", "import time; time.sleep(5)"],
+                          lambda: False, .1)
+
+
+def test_audio_midi_preview_needs_no_synth(tmp_path):
+    f = tmp_path / "theme.mid"
+    f.write_bytes(smf(NOTE))
+    result = cli(tmp_path, "--file", str(f), "--backend", "audio", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["backend"] == "audio"
+    assert cli(tmp_path, "--file", str(f), "--backend", "audio", "--track", "0",
+               "--dry-run").returncode != 0
