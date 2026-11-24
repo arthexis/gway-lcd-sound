@@ -146,6 +146,10 @@ def render(doc):
             chunks = [repository[i:i + 16] for i in range(0, len(repository), 16)]
             for i, piece in enumerate(chunks):
                 pages.append((f"REPO {i+1}/{len(chunks)}", piece))
+    elif len(name) > 16:
+        chunks = [_ascii(name)[i:i + 16] for i in range(0, len(name), 16)]
+        for i, piece in enumerate(chunks):
+            pages.append((f"SERVICE {i+1}/{len(chunks)}", piece))
     if len(pages) > MAX_PAGES or any(len(a) > 16 or len(b) > 16 for a, b in pages):
         raise ValueError("too many notification display pages")
     return pages
