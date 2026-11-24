@@ -25,8 +25,18 @@ def test_sequence_invalid_rejected_without_database(tmp_path):
     assert not (tmp_path / "unused.sqlite3").exists()
 
 def test_sequence_rejects_unexpected_flags(tmp_path):
-    result = run(tmp_path, "--sequence", SEQUENCE, "--backend", "audio")
+    # The routed sequence contract permits audio. Reject a genuinely
+    # unsupported repeat instead; never rely on absent host audio hardware.
+    result = run(tmp_path, "--sequence", SEQUENCE, "--repeat", "2", "--dry-run")
     assert result.returncode != 0
+    assert "cannot be repeated" in result.stderr
+
+
+def test_sequence_accepts_audio_backend_preview(tmp_path):
+    result = run(tmp_path, "--sequence", SEQUENCE, "--backend", "audio", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert "backend=audio" in result.stdout
+    assert not (tmp_path / "unused.sqlite3").exists()
 
 def test_existing_named_cue_dry_run(tmp_path):
     result = run(tmp_path, "ok", "--dry-run")
