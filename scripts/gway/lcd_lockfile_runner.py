@@ -27,6 +27,7 @@ from lcd_engine.model import Payload, EventPayload, ChannelState
 from lcd_engine.rendering import clean_line, scroll_segment
 from lcd_engine.scheduler import Scheduler
 from lcd_engine.reports import current_payload as reports_payload
+from lcd_engine.notifications import current_payload as notice_payload
 from lcd_engine.undervoltage import Incident, read_active, display_time
 from lcd_engine.lockfiles import (
     CHANNEL_FILES, KNOWN_CHANNELS, EVENT_PREFIX, EVENT_GLOB, RUNNER_LOCK,
@@ -483,9 +484,14 @@ class Runner:
         runner = active_runner_payload(self.lock_dirs, now=now)
         event = self.active_event(now) if runner is None else None
         warning = self.undervoltage_payload()
-        reports = reports_payload(self.lock_dirs, now=now, monotonic=time.monotonic()) if not runner and not event else None
-        payload = warning or runner or (self.event_payload(event) if event else reports or self.current_payload(now))
-        source = "warning" if warning else "runner" if runner else "event" if event else "reports" if reports else "normal"
+        monotonic = time.monotonic()
+        notice = notice_payload(self.lock_dirs, now=now, monotonic=monotonic)
+        urgent = notice if notice and notice.label in ("notice-critical", "notice-error") else None
+        minor = notice if notice and not urgent else None
+        reports = reports_payload(self.lock_dirs, now=now, monotonic=monotonic) if not runner and not event else None
+        payload = warning or urgent or runner or (self.event_payload(event) if event else minor or reports or self.current_payload(now))
+        source = ("warning" if warning else payload.label if payload.label.startswith("notice-")
+                  else "runner" if runner else "event" if event else "reports" if reports else "normal")
         line1, line2 = self.frame_for_payload(payload, 0)
         if self.args.dry_run:
             print(f"{payload.label}: {line1!r} / {line2!r}")
@@ -529,12 +535,15 @@ class Runner:
                     event_payload = self.event_payload(event)
                     last_event = event
                 monotonic = time.monotonic()
+                notice = notice_payload(self.lock_dirs, now=now, monotonic=monotonic)
+                urgent = notice if notice and notice.label in ("notice-critical", "notice-error") else None
+                minor = notice if notice and not urgent else None
                 reports = reports_payload(self.lock_dirs, now=now, monotonic=monotonic) if not runner and not event else None
                 choice = scheduler.tick(
                     now=now,
                     monotonic=monotonic,
-                    runner=runner,
-                    event=event_payload or reports,
+                    runner=urgent or runner,
+                    event=event_payload or minor or reports,
                     normal=normal_payload,
                 )
                 warning = self.undervoltage_payload()
@@ -544,7 +553,7 @@ class Runner:
                     line1,
                     line2,
                     shown.label,
-                    source="warning" if warning else "reports" if shown.label == "reports" else choice.source,
+                    source="warning" if warning else shown.label if shown.label.startswith("notice-") else "reports" if shown.label == "reports" else choice.source,
                     origin=str(shown.source) if shown.source else shown.label,
                 )
                 if choice.advance_normal:

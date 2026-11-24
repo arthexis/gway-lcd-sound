@@ -10,7 +10,7 @@ Commands:
   lcd monitor eth0 [OPTIONS]   Run the Ethernet LCD monitor.
   lcd status                   Inspect LCD overlay (read-only).
   lcd show LINE1 [LINE2]       Display a temporary LCD overlay.
-  lcd clear                    Clear only the owned overlay.
+  lcd clear                    Clear only the owned overlay.\n  lcd notice JSON              Post one typed operational notice.
   sound status [--json]        Inspect mute state (read-only).
   sound play NAME [OPTIONS]    Play a named sound.
   sound play --sequence JSON [--dry-run]  Preview or play one-shot tones.
@@ -44,7 +44,7 @@ command="${1:-}"
 case "$command" in
   lcd)
     case "${2:-}" in
-      status|show|clear|reports) shift; exec python3 "$script_dir/route_send.py" lcd "$@" ;;
+      status|show|clear|reports|notice) shift; exec python3 "$script_dir/route_send.py" lcd "$@" ;;
       monitor) ;;
       *) usage >&2; exit 64 ;;
     esac
