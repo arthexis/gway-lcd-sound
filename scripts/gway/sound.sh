@@ -3,7 +3,7 @@ set -euo pipefail
 
 cleanup_gpio() {
   if command -v pinctrl >/dev/null 2>&1; then
-    pinctrl set "${NODE_SOUND_GPIO_PIN:-${GWAY_SOUND_GPIO_PIN:-18}}" ip pd >/dev/null 2>&1 || true
+    python3 -m sound_gpio_lock "${NODE_SOUND_GPIO_PIN:-${GWAY_SOUND_GPIO_PIN:-18}}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -12,7 +12,11 @@ export PYTHONPATH="$script_dir${PYTHONPATH:+:$PYTHONPATH}"
 if [[ "${1:-}" == "status" ]]; then
   exec python3 -m sound_engine.mute "$@"
 fi
-trap cleanup_gpio EXIT
+file_mode=0
+for arg in "$@"; do
+  if [[ "$arg" == "--file" || "$arg" == --file=* ]]; then file_mode=1; break; fi
+done
+if [[ "$file_mode" == 0 ]]; then trap cleanup_gpio EXIT; fi
 
 if [[ "${1:-}" == "mute" || "${1:-}" == "unmute" || "${1:-}" == "toggle" ]]; then
   if [[ "${2:-}" == "--json" ]]; then
@@ -27,6 +31,7 @@ import argparse
 from sound_engine import mute as sound_mute
 from sound_sequence import validate as validate_sequence, parse_sequence
 from sound_music import load_music
+from sound_gpio_lock import playback_lock
 import json
 import sqlite3
 import fcntl
@@ -409,8 +414,11 @@ def play_pattern(name, *, pin, volume, backend, device, dry_run=False):
         except Exception as exc:
             log_backend(f"sound={name} backend=audio failed={exc!r}")
             raise
-    mark_noise_alarm_suppressed(name, backend, pattern)
-    play_gpio_pattern(name, pin=pin, volume=volume)
+    with playback_lock():
+        if playback_muted():
+            return
+        mark_noise_alarm_suppressed(name, backend, pattern)
+        play_gpio_pattern(name, pin=pin, volume=volume)
     log_backend(f"sound={name} backend=gpio pin={pin} cwd={os.getcwd()} ok")
 
 
@@ -810,10 +818,11 @@ def music_main(parser, args):
             return 0
         if playback_muted() or args.volume <= 0:
             return 0
-        if backend == "audio":
-            play_music_audio(music, args)
-        else:
-            play_custom("music", music.pattern, args)
+        with playback_lock("music-playback", timeout=0):
+            if backend == "audio":
+                play_music_audio(music, args)
+            else:
+                play_custom("music", music.pattern, args)
         return 0
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         parser.error(str(exc))
@@ -976,6 +985,6 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 PY
 status=$?
-cleanup_gpio
+if [[ "$file_mode" == 0 ]]; then cleanup_gpio; fi
 trap - EXIT
 exit "$status"
