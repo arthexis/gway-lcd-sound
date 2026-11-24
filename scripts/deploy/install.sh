@@ -121,6 +121,8 @@ sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))
 import lcd_engine.hardware.discovery
 import lcd_engine.system_info.collectors
 import sound_engine.events
+import sound_music
+import sound_gpio_lock
 import event_engine.app_observer
 import event_engine.observer_lock
 import event_engine.notification_journal
@@ -212,6 +214,8 @@ sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve()))
 import lcd_engine.hardware.discovery
 import lcd_engine.system_info.collectors
 import sound_engine.events
+import sound_music
+import sound_gpio_lock
 PY
       mv "$staging" "$target"
       trap - EXIT
