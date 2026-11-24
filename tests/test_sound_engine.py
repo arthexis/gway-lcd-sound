@@ -82,3 +82,19 @@ def test_external_lcd_takeover_emits_once_without_rotation_noise(monkeypatch):
     events.process_changes(runner, {**runner, "lcd_display": {"source": "normal", "origin": "clock"}}, runtime, dry_run=True)
 
     assert emitted == [("lcd-external-change", "notice", "runner")]
+
+
+def test_reports_carousel_does_not_emit_takeover_or_rotation_audio(monkeypatch):
+    emitted = []
+    monkeypatch.setattr(events, "play", lambda event, sound, detail="", *, dry_run=False: emitted.append((event, sound, detail)))
+    baseline = {"lcd_display": {"source": "normal", "origin": "clock"},
+                "thermal": {"level": "normal"}, "undervoltage": {"active": False}}
+    reports = {**baseline, "lcd_display": {"source": "reports", "origin": "lcd-reports.json"}}
+    urgent = {**baseline, "lcd_display": {"source": "event", "origin": "lcd-event-alarm.lck"}}
+    runtime = {}
+    events.process_changes(baseline, reports, runtime, dry_run=True)
+    events.process_changes(reports, reports, runtime, dry_run=True)
+    events.process_changes(reports, urgent, runtime, dry_run=True)
+    events.process_changes(urgent, reports, runtime, dry_run=True)
+    events.process_changes(reports, baseline, runtime, dry_run=True)
+    assert emitted == [("lcd-external-change", "notice", "event")]
