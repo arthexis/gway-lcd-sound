@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1] / "scripts" / "gway"
 sys.path.insert(0, str(ROOT))
 from sound_music import load_music, parse_midi, parse_rtttl  # noqa: E402
-from sound_gpio_lock import playback_lock  # noqa: E402
+from sound_gpio_lock import (playback_lock, alert_playback, play_interruptible, music_slice)  # noqa: E402
 import route_send  # noqa: E402
 
 
@@ -119,12 +119,12 @@ def test_cli_rtttl_and_conflicting_selection(tmp_path):
     assert cli(tmp_path, "--file", str(f), "--event", "foo", "--dry-run").returncode != 0
 
 
-def test_gpio_duration_limit(tmp_path):
+def test_long_gpio_preview(tmp_path):
     f = tmp_path / "long.rtttl"
     f.write_text("Theme:d=1,o=5,b=60:a,b")
     result = cli(tmp_path, "--file", str(f), "--dry-run")
-    assert result.returncode != 0
-    assert "5 seconds" in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["seconds"] == 8
     assert cli(tmp_path, "--file", str(f), "--backend", "audio", "--dry-run").returncode == 0
 
 
@@ -146,4 +146,64 @@ def test_shared_lock_exclusion(tmp_path, monkeypatch):
             with playback_lock(timeout=0):
                 pytest.fail("lock unexpectedly acquired")
     with playback_lock(timeout=0):
+        pass
+
+
+
+def test_interruptible_long_note_and_mute(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    played = []
+    def emit(pitch, duration):
+        played.append((pitch, duration))
+    assert play_interruptible([(440, 6.5, .1)], emit, lambda: False)
+    assert sum(duration for _, duration in played) == pytest.approx(6.6)
+    assert max(duration for _, duration in played) <= .2
+    played.clear()
+    assert not play_interruptible([(440, 8, 0)], emit, lambda: len(played) >= 2)
+    assert len(played) == 2
+
+
+def test_operational_alert_has_priority(tmp_path, monkeypatch):
+    import threading
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    intent = threading.Event()
+    order = []
+    def alert():
+        # Announce before waiting on the hardware, as alert_playback does.
+        with playback_lock("gpio-alert-intent", shared=True):
+            intent.set()
+            with playback_lock():
+                order.append("alert")
+    with music_slice(lambda: False) as acquired:
+        assert acquired
+        worker = threading.Thread(target=alert)
+        worker.start()
+        assert intent.wait(2)
+        order.append("slice1")
+    with music_slice(lambda: False) as acquired:
+        assert acquired
+        order.append("slice2")
+    worker.join(2)
+    assert not worker.is_alive()
+    assert order == ["slice1", "alert", "slice2"]
+
+
+def test_waiting_music_respects_mute(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    polls = []
+    def muted():
+        polls.append(True)
+        return len(polls) > 1
+    with alert_playback():
+        with music_slice(muted) as acquired:
+            assert not acquired
+
+
+def test_music_releases_locks_on_exception(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    def fail(*args):
+        raise RuntimeError("hardware fault")
+    with pytest.raises(RuntimeError, match="hardware fault"):
+        play_interruptible([(440, 1, 0)], fail, lambda: False)
+    with alert_playback():
         pass
