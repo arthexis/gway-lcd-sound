@@ -24,7 +24,17 @@ def test_normal_frames_preserve_order_and_format():
     assert frames[0].line1 == "HOST gway-001"
     assert frames[1].line1 == "NET eth0 ok"
     assert frames[3].line1 == "SOC54C RTC31C"
+    assert frames[3].line2 == "L0.32 FRAM62%"
     assert all(len(f.line1) <= 16 and len(f.line2) <= 16 for f in frames)
+
+
+def test_health_free_ram_and_width():
+    for used, expected in [(30, "L4.08 FRAM70%"), (0, "L4.08 FRAM100%"),
+                           (100, "L4.08 FRAM0%")]:
+        frame = formatting.build_frames(sample(load1=4.08, ram_pct=used))[3]
+        assert frame.line2 == expected
+    assert formatting.build_frames(sample(load1=12345.67, ram_pct=0))[3].line2 == "L12346 FRAM100%"
+    assert formatting.build_frames(sample(load1=123456789.0, ram_pct=0))[3].line2 == "FRAM100%"
 
 
 def test_conditional_frames_preserve_existing_order():
@@ -57,7 +67,7 @@ def test_missing_metrics_remain_unknown():
                                             ip_addr="", reachable=False))
     assert frames[1].line2 == "no primary ip"
     assert frames[3].line1 == "SOC?C RTC?C"
-    assert "RAM?%" in frames[3].line2
+    assert frames[3].line2 == "L0.32 FRAM?%"
 
 
 def test_rtc_temperature_uses_only_valid_ds3231(tmp_path):
