@@ -104,16 +104,16 @@
         that:
           - not (existing_manifest.stat.islnk | default(false))
           - not (existing_manifest.stat.exists | default(false)) or (existing_manifest.stat.isreg | default(false))
-    - name: Snapshot existing manifest for rollback
-      ansible.builtin.slurp:
-        src: "{{ lcd_sound_manifest_path }}"
-      register: previous_manifest
-      when: existing_manifest.stat.exists | default(false)
     - name: Require trusted existing manifest
       ansible.builtin.assert:
         that:
           - existing_manifest.stat.uid == 0
           - existing_manifest.stat.mode == '0644'
+      when: existing_manifest.stat.exists | default(false)
+    - name: Snapshot existing manifest for declaration preservation
+      ansible.builtin.slurp:
+        src: "{{ lcd_sound_manifest_path }}"
+      register: previous_manifest
       when: existing_manifest.stat.exists | default(false)
     - name: Preserve existing broker pin unless explicitly refreshed
       ansible.builtin.set_fact:
@@ -122,6 +122,24 @@
       ansible.builtin.set_fact:
         broker_declaration: "{{ {'schema': 1, 'checkout': lcd_sound_deployment_checkout, 'runner': lcd_sound_deployment_checkout ~ '/broker-deploy.sh', 'revision': lcd_sound_deployment_revision} }}"
       when: lcd_sound_deployment_checkout is defined
+    - name: Allocate private rollback snapshot
+      ansible.builtin.tempfile:
+        state: file
+        path: "{{ lcd_sound_manifest_dir }}"
+        prefix: .lcd_sound-rollback-
+      register: rollback_snapshot
+      when: existing_manifest.stat.exists | default(false)
+      changed_when: false
+    - name: Preserve exact previous bytes
+      ansible.builtin.copy:
+        src: "{{ lcd_sound_manifest_path }}"
+        dest: "{{ rollback_snapshot.path }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0600'
+      when: existing_manifest.stat.exists | default(false)
+      changed_when: false
     - name: Publish and verify pinned manifest, restoring prior state on failure
       block:
         - name: Publish pinned manifest atomically and idempotently
@@ -151,11 +169,17 @@
       rescue:
         - name: Restore previous manifest atomically
           ansible.builtin.copy:
+            src: "{{ rollback_snapshot.path }}"
             dest: "{{ lcd_sound_manifest_path }}"
+            remote_src: true
             owner: root
             group: root
             mode: '0644'
-            content: "{{ previous_manifest.content | b64decode }}"
+          when: existing_manifest.stat.exists | default(false)
+        - name: Remove restored rollback snapshot
+          ansible.builtin.file:
+            path: "{{ rollback_snapshot.path }}"
+            state: absent
           when: existing_manifest.stat.exists | default(false)
         - name: Remove new manifest if no previous state existed
           ansible.builtin.file:
@@ -165,3 +189,9 @@
         - name: Fail closed after rollback
           ansible.builtin.fail:
             msg: LCD Sound MCP publication failed; previous manifest restored
+    - name: Remove successful publication rollback snapshot
+      ansible.builtin.file:
+        path: "{{ rollback_snapshot.path }}"
+        state: absent
+      when: existing_manifest.stat.exists | default(false)
+      changed_when: false
