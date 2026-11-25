@@ -47,6 +47,8 @@ jobs:
           registry="${{ runner.temp }}/mcp-registry-test"
           mkdir -p "$registry"
           printf '%s\n' '{"source_id":"previous","revision":"prior"}' > "$registry/lcd_sound.json"
+          sudo -n chown root:root "$registry/lcd_sound.json"
+          sudo -n chmod 0644 "$registry/lcd_sound.json"
           cp "$registry/lcd_sound.json" "${{ runner.temp }}/previous-manifest.json"
           ansible_bin=$(command -v ansible-playbook)
           vars="lcd_sound_revision=$revision lcd_sound_release_root=$releases lcd_sound_manifest_dir=$registry lcd_sound_manifest_path=$registry/lcd_sound.json"
