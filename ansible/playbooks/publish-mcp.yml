@@ -15,6 +15,37 @@
           - lookup('pipe', 'id -u') == '0'
           - lcd_sound_revision is defined
           - lcd_sound_revision is match('^[a-f0-9]{40}$')
+    - name: Validate optional broker checkout and runner
+      when: lcd_sound_deployment_checkout is defined
+      block:
+        - ansible.builtin.assert:
+            that:
+              - lcd_sound_deployment_revision is defined
+              - lcd_sound_deployment_revision is match('^[a-f0-9]{40}$')
+              - lcd_sound_deployment_checkout == '/home/arthe/.local/share/gway-lcd-sound/checkouts/' ~ lcd_sound_deployment_revision
+        - ansible.builtin.stat:
+            path: "{{ lcd_sound_deployment_checkout }}"
+            follow: false
+          register: broker_checkout
+        - ansible.builtin.assert:
+            that:
+              - broker_checkout.stat.isdir | default(false)
+              - not (broker_checkout.stat.islnk | default(false))
+              - broker_checkout.stat.pw_name == 'arthe'
+              - not (broker_checkout.stat.wgrp | default(true))
+              - not (broker_checkout.stat.woth | default(true))
+        - ansible.builtin.stat:
+            path: "{{ lcd_sound_deployment_checkout }}/broker-deploy.sh"
+            follow: false
+          register: broker_runner
+        - ansible.builtin.assert:
+            that:
+              - broker_runner.stat.isreg | default(false)
+              - not (broker_runner.stat.islnk | default(false))
+              - broker_runner.stat.executable | default(false)
+              - broker_runner.stat.pw_name == 'arthe'
+              - not (broker_runner.stat.wgrp | default(true))
+              - not (broker_runner.stat.woth | default(true))
     - name: Inspect release without following links
       ansible.builtin.stat:
         path: "{{ lcd_sound_release_root }}/{{ lcd_sound_revision }}"
@@ -73,11 +104,42 @@
         that:
           - not (existing_manifest.stat.islnk | default(false))
           - not (existing_manifest.stat.exists | default(false)) or (existing_manifest.stat.isreg | default(false))
-    - name: Snapshot existing manifest for rollback
+    - name: Require trusted existing manifest
+      ansible.builtin.assert:
+        that:
+          - existing_manifest.stat.uid == 0
+          - existing_manifest.stat.mode == '0644'
+      when: existing_manifest.stat.exists | default(false)
+    - name: Snapshot existing manifest for declaration preservation
       ansible.builtin.slurp:
         src: "{{ lcd_sound_manifest_path }}"
       register: previous_manifest
       when: existing_manifest.stat.exists | default(false)
+    - name: Preserve existing broker pin unless explicitly refreshed
+      ansible.builtin.set_fact:
+        broker_declaration: "{{ (previous_manifest.content | b64decode | from_json).get('deployment', {}) if existing_manifest.stat.exists | default(false) else {} }}"
+    - name: Bind explicitly authorized target
+      ansible.builtin.set_fact:
+        broker_declaration: "{{ {'schema': 1, 'checkout': lcd_sound_deployment_checkout, 'runner': lcd_sound_deployment_checkout ~ '/broker-deploy.sh', 'revision': lcd_sound_deployment_revision} }}"
+      when: lcd_sound_deployment_checkout is defined
+    - name: Allocate private rollback snapshot
+      ansible.builtin.tempfile:
+        state: file
+        path: "{{ lcd_sound_manifest_dir }}"
+        prefix: .lcd_sound-rollback-
+      register: rollback_snapshot
+      when: existing_manifest.stat.exists | default(false)
+      changed_when: false
+    - name: Preserve exact previous bytes
+      ansible.builtin.copy:
+        src: "{{ lcd_sound_manifest_path }}"
+        dest: "{{ rollback_snapshot.path }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0600'
+      when: existing_manifest.stat.exists | default(false)
+      changed_when: false
     - name: Publish and verify pinned manifest, restoring prior state on failure
       block:
         - name: Publish pinned manifest atomically and idempotently
@@ -86,8 +148,8 @@
             owner: root
             group: root
             mode: '0644'
-            content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp', 'argv': [lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp']} | to_json }}\n"
-  
+            content: "{{ {'source_id': 'lcd_sound', 'revision': lcd_sound_revision, 'executable': lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp', 'argv': [lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp']} | combine({'deployment': broker_declaration} if broker_declaration else {}) | to_json }}\n"
+
         - name: Read back published manifest
           ansible.builtin.slurp:
             src: "{{ lcd_sound_manifest_path }}"
@@ -103,14 +165,21 @@
               - (published_manifest.content | b64decode | from_json).revision == lcd_sound_revision
               - (published_manifest.content | b64decode | from_json).executable == lcd_sound_release_root ~ '/' ~ lcd_sound_revision ~ '/scripts/gway/lcd-sound-mcp'
               - (published_manifest.content | b64decode | from_json).source_id == 'lcd_sound'
+              - (published_manifest.content | b64decode | from_json).get('deployment', {}) == broker_declaration
       rescue:
         - name: Restore previous manifest atomically
           ansible.builtin.copy:
+            src: "{{ rollback_snapshot.path }}"
             dest: "{{ lcd_sound_manifest_path }}"
+            remote_src: true
             owner: root
             group: root
             mode: '0644'
-            content: "{{ previous_manifest.content | b64decode }}"
+          when: existing_manifest.stat.exists | default(false)
+        - name: Remove restored rollback snapshot
+          ansible.builtin.file:
+            path: "{{ rollback_snapshot.path }}"
+            state: absent
           when: existing_manifest.stat.exists | default(false)
         - name: Remove new manifest if no previous state existed
           ansible.builtin.file:
@@ -120,3 +189,9 @@
         - name: Fail closed after rollback
           ansible.builtin.fail:
             msg: LCD Sound MCP publication failed; previous manifest restored
+    - name: Remove successful publication rollback snapshot
+      ansible.builtin.file:
+        path: "{{ rollback_snapshot.path }}"
+        state: absent
+      when: existing_manifest.stat.exists | default(false)
+      changed_when: false
